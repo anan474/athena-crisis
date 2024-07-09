@@ -26,6 +26,7 @@ const player1 = map.getCurrentPlayer();
 const options = {
   canCreateBuildUnits: true,
   canCreateCaptureUnits: true,
+  canCreateHealingUnits: true,
   canCreateSupplyUnits: true,
   canCreateTransportUnits: true,
 };
