@@ -5,6 +5,7 @@ import {
 } from '@deities/athena/lib/getAttributeRange.tsx';
 import { DoubleSize, TileSize } from '@deities/athena/map/Configuration.tsx';
 import getCampaignLevelDepths from '@deities/hermes/getCampaignLevelDepths.tsx';
+import { PlayStyle } from '@deities/hermes/PlayStyle.tsx';
 import toCampaign from '@deities/hermes/toCampaign.tsx';
 import toLevelMap from '@deities/hermes/toLevelMap.tsx';
 import toPlainCampaign from '@deities/hermes/toPlainCampaign.tsx';
@@ -55,7 +56,6 @@ import toTransformOrigin from '../lib/toTransformOrigin.tsx';
 import Notification from '../ui/Notification.tsx';
 import Level from './Level.tsx';
 import LevelDialogue from './LevelDialogue.tsx';
-import { PlayStyleType } from './lib/PlayStyle.tsx';
 import CampaignEditorPanel from './panels/CampaignEditorControlPanel.tsx';
 import { UserNode } from './panels/CampaignEditorSettingsPanel.tsx';
 import {
@@ -74,6 +74,7 @@ export default function CampaignEditor({
   exportMap,
   initialMapId,
   isAdmin,
+  isValidName,
   mapDataSource,
   maps,
   updateCampaign,
@@ -91,6 +92,7 @@ export default function CampaignEditor({
   exportMap: (mapId: string) => void;
   initialMapId?: string | null;
   isAdmin?: boolean;
+  isValidName: (name: string, extraCharacters: string) => boolean;
   mapDataSource: TypeaheadDataSource<MapNode>;
   maps: ReadonlyMap<ClientLevelID, MapNode>;
   updateCampaign: UpdateCampaignFunction;
@@ -168,7 +170,7 @@ export default function CampaignEditor({
     campaignEditorState.map || campaignEditorState.createMap
   );
 
-  const [playStyle, setPlayStyle] = useState<PlayStyleType | null>(
+  const [playStyle, setPlayStyle] = useState<PlayStyle | null>(
     data?.playStyle || null,
   );
 
@@ -219,7 +221,6 @@ export default function CampaignEditor({
         addMap(newMap);
         levels.set(newMap.id, {
           mapId: newMap.id,
-          result: {},
         });
       }
 
@@ -487,6 +488,7 @@ export default function CampaignEditor({
                 <MapEditor
                   campaignLock={data}
                   inset={inset}
+                  isValidName={isValidName}
                   mode={campaignEditorState.mapEditorMode}
                   onCreate={onMapSave}
                   onUpdate={onMapSave}
@@ -514,9 +516,12 @@ export default function CampaignEditor({
             </motion.div>
           )}
         </div>
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="sync">
           {saveState && (
-            <Notification center={hasSaved || undefined}>
+            <Notification
+              center={hasSaved || undefined}
+              key={'id' in saveState ? saveState.id : saveState.message}
+            >
               {hasSaved ? (
                 <fbt desc="Text after saving a campaign">
                   Campaign &quot;<fbt:param name="campaignName">

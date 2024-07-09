@@ -1,11 +1,12 @@
+import { css, cx } from '@emotion/css';
 import { Fragment, useMemo } from 'react';
 import { hasGamePad } from './controls/setupGamePad.tsx';
 import { useInlineLink } from './InlineLink.tsx';
 
-const reload = () => location.reload();
+const _reload = () => location.reload();
 
-export default function Reload() {
-  const linkProps = useInlineLink();
+export default function Reload({ reload = _reload }: { reload?: () => void }) {
+  const { className, ...linkProps } = useInlineLink();
 
   return (
     <Fragment>
@@ -16,7 +17,11 @@ export default function Reload() {
       ) : (
         <fbt desc="Reload description">
           Tap here to{' '}
-          <a onClick={reload} {...linkProps}>
+          <a
+            className={cx(className, inlineDisplayStyle)}
+            onClick={reload}
+            {...linkProps}
+          >
             reload the game
           </a>.
         </fbt>
@@ -24,3 +29,7 @@ export default function Reload() {
     </Fragment>
   );
 }
+
+const inlineDisplayStyle = css`
+  display: inline;
+`;

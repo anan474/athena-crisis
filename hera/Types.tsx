@@ -1,5 +1,9 @@
 import { Action, MutateActionResponseFn } from '@deities/apollo/Action.tsx';
-import { ActionResponse } from '@deities/apollo/ActionResponse.tsx';
+import {
+  ActionResponse,
+  ReceiveRewardActionResponse,
+} from '@deities/apollo/ActionResponse.tsx';
+import { Effects } from '@deities/apollo/Effects.tsx';
 import {
   GameActionResponse,
   GameActionResponses,
@@ -7,7 +11,6 @@ import {
 import { DecoratorInfo } from '@deities/athena/info/Decorator.tsx';
 import { Skill } from '@deities/athena/info/Skill.tsx';
 import { TileInfo } from '@deities/athena/info/Tile.tsx';
-import { Biome } from '@deities/athena/map/Biome.tsx';
 import Building from '@deities/athena/map/Building.tsx';
 import type { AnimationConfig } from '@deities/athena/map/Configuration.tsx';
 import { PlayerID } from '@deities/athena/map/Player.tsx';
@@ -17,6 +20,7 @@ import MapData, { ModifierField } from '@deities/athena/MapData.tsx';
 import { RadiusItem } from '@deities/athena/Radius.tsx';
 import { VisionT } from '@deities/athena/Vision.tsx';
 import { NavigationDirection } from '@deities/ui/controls/Input.tsx';
+import ImmutableMap from '@nkzw/immutable-map';
 import type { ReactElement, ReactNode } from 'react';
 import { ConfirmProps } from './behavior/confirm/ConfirmAction.tsx';
 import { EditorState, SetEditorStateFunction } from './editor/Types.tsx';
@@ -36,6 +40,14 @@ export type AnimationConfigs = readonly [
   fastPlayer: AnimationConfig,
 ];
 
+export type PlayerHasRewardFunction = (
+  map: MapData,
+  player: PlayerID,
+  actionResponse: ReceiveRewardActionResponse,
+) => boolean;
+
+export type PlayerAchievement = Readonly<{ result: string; stars: number }>;
+
 export type Props = Readonly<{
   animatedChildren?: (state: State) => ReactNode;
   animationConfig?: AnimationConfigs | AnimationConfig;
@@ -47,6 +59,7 @@ export type Props = Readonly<{
   currentUserId: string;
   dangerouslyApplyExternalState?: boolean;
   editor?: EditorState;
+  effects?: Effects;
   endGame?: (type: 'Lose') => void;
   events?: EventTarget;
   factionNames: FactionNames;
@@ -63,6 +76,8 @@ export type Props = Readonly<{
   onError?: (error: Error) => void;
   pan?: true;
   paused?: boolean;
+  playerAchievement?: PlayerAchievement | null;
+  playerHasReward?: PlayerHasRewardFunction;
   scale: number;
   scroll?: boolean;
   setEditorState?: SetEditorStateFunction;
@@ -102,6 +117,10 @@ export type State = Readonly<{
   confirmAction?: ConfirmProps | null;
   currentUserId: string;
   currentViewer: PlayerID | null;
+  effectState: {
+    extraUnits: ImmutableMap<Vector, Unit>;
+    radius: ReadonlyArray<RadiusInfo>;
+  } | null;
   factionNames: FactionNames;
   gameInfoState: GameInfoState | null;
   initialBehaviorClass: MapBehaviorConstructor | undefined | null;
@@ -112,6 +131,7 @@ export type State = Readonly<{
   mapName?: string;
   namedPositions: ReadonlyArray<Vector> | null;
   navigationDirection: NavigationDirection | null;
+  objectiveRadius: ReadonlyArray<RadiusInfo> | null;
   paused: boolean;
   position: Vector | null;
   preventRemoteActions: boolean;
@@ -125,8 +145,8 @@ export type State = Readonly<{
   showCursor: boolean;
   tileSize: number;
   timeout: number | null;
+  userDisplayName: string;
   vision: VisionT;
-  winConditionRadius: ReadonlyArray<RadiusInfo> | null;
   zIndex: number;
 }>;
 
@@ -165,7 +185,6 @@ export type CurrentGameInfoState = Readonly<{
 }>;
 
 export type MapInfoState = Readonly<{
-  biome: Biome;
   building?: Building | null;
   buildingPlayer?: PlayerID;
   create?: () => void;
@@ -174,6 +193,13 @@ export type MapInfoState = Readonly<{
   origin: string;
   tile?: TileInfo | null;
   type: 'map-info';
+  unit?: Unit | null;
+  vector: Vector;
+}>;
+
+export type LeaderInfoState = Readonly<{
+  origin: string;
+  type: 'leader-info';
   unit?: Unit | null;
   vector: Vector;
 }>;
@@ -192,6 +218,7 @@ export type SkillInfoState = Readonly<{
 
 export type GameInfoState =
   | CurrentGameInfoState
+  | LeaderInfoState
   | MapInfoState
   | SkillInfoState;
 
@@ -214,6 +241,7 @@ export type Actions = Readonly<{
   scrollIntoView: (vectors: ReadonlyArray<Vector>) => Promise<void>;
   setEditorState: SetEditorStateFunction;
   showGameInfo: (gameInfoState: GameInfoState) => void;
+  throwError: (error: Error) => void;
   update: UpdateFunction;
 }>;
 

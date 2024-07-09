@@ -8,7 +8,7 @@ export const AnimationConfig = {
   Instant: false,
   MessageSpeed: AnimationSpeed * 2,
   UnitAnimationStep: (AnimationSpeed * 2) / 3,
-  UnitMoveDuration: AnimationSpeed * 2,
+  UnitMoveDuration: AnimationSpeed as number,
 } as const;
 
 export type AnimationConfig = Omit<typeof AnimationConfig, 'Instant'> &
@@ -20,7 +20,7 @@ export const FastAnimationConfig: AnimationConfig = {
   Instant: false,
   MessageSpeed: AnimationConfig.AnimationDuration / 2,
   UnitAnimationStep: AnimationConfig.UnitAnimationStep / 4,
-  UnitMoveDuration: AnimationConfig.UnitMoveDuration / 4,
+  UnitMoveDuration: AnimationConfig.UnitMoveDuration / 2,
 };
 
 export const SlowAnimationConfig: AnimationConfig = {
@@ -58,7 +58,7 @@ export const LeaderStatusEffect = 0.05;
 export const CounterAttack = 0.75;
 export const RaisedCounterAttack = 0.9;
 export const CreateTracksCost = 50;
-export const Charge = 1750;
+export const Charge = 1500;
 export const MaxCharges = 10;
 export const AllowedMisses = 2;
 export const DefaultMapSkillSlots = 2;

@@ -1,6 +1,7 @@
 import type { ActionResponse } from '@deities/apollo/ActionResponse.tsx';
 import applyActionResponse from '@deities/apollo/actions/applyActionResponse.tsx';
 import getActionResponseVectors from '@deities/apollo/lib/getActionResponseVectors.tsx';
+import getMatchingTeam from '@deities/apollo/lib/getMatchingTeam.tsx';
 import updateVisibleEntities from '@deities/apollo/lib/updateVisibleEntities.tsx';
 import {
   GameActionResponse,
@@ -12,7 +13,7 @@ import {
   PlayerID,
   resolveDynamicPlayerID,
 } from '@deities/athena/map/Player.tsx';
-import Vector, { sortByVectorKey } from '@deities/athena/map/Vector.tsx';
+import { sortByVectorKey } from '@deities/athena/map/Vector.tsx';
 import MapData from '@deities/athena/MapData.tsx';
 import { moveable, RadiusItem } from '@deities/athena/Radius.tsx';
 import { VisionT } from '@deities/athena/Vision.tsx';
@@ -20,7 +21,10 @@ import dateNow from '@deities/hephaestus/dateNow.tsx';
 import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import arrayShuffle from 'array-shuffle';
 import { fbt } from 'fbt';
-import secretDiscoveredAnimation from '../animations/secretDiscoveredAnimation.tsx';
+import animateFireworks, {
+  getPossibleFireworksPositions,
+} from '../animations/animateFireworks.tsx';
+import objectiveAnimation from '../animations/objectiveAnimation.tsx';
 import activatePowerAction from '../behavior/activatePower/activatePowerAction.tsx';
 import clientAttackAction from '../behavior/attack/clientAttackAction.tsx';
 import {
@@ -38,9 +42,8 @@ import clientMoveAction from '../behavior/move/clientMoveAction.tsx';
 import hiddenMoveAction from '../behavior/move/hiddenMoveAction.tsx';
 import NullBehavior from '../behavior/NullBehavior.tsx';
 import { toggleLightningAnimation } from '../behavior/radar/toggleLightningAction.tsx';
-import rescueAction, {
-  addRescueAnimation,
-} from '../behavior/rescue/rescueAction.tsx';
+import receivePortraitAnimation from '../behavior/receivePortrait/receivePortraitAnimation.tsx';
+import rescueAction from '../behavior/rescue/rescueAction.tsx';
 import sabotageAction, {
   addSabotageAnimation,
 } from '../behavior/sabotage/sabotageAction.tsx';
@@ -54,6 +57,7 @@ import AnimationKey from '../lib/AnimationKey.tsx';
 import getPlayerDefeatedMessage from '../lib/getPlayerDefeatedMessage.tsx';
 import getTranslatedFactionName from '../lib/getTranslatedFactionName.tsx';
 import isFakeEndTurn from '../lib/isFakeEndTurn.tsx';
+import isSkillRewardActionResponse from '../lib/isSkillRewardActionResponse.tsx';
 import sleep from '../lib/sleep.tsx';
 import spawn from '../lib/spawn.tsx';
 import startGameAnimation from '../lib/startGameAnimation.tsx';
@@ -61,9 +65,8 @@ import { RadiusType } from '../Radius.tsx';
 import {
   Actions,
   AnimationConfigs,
+  PlayerHasRewardFunction,
   State,
-  StateLike,
-  StateToStateLike,
 } from '../Types.tsx';
 import ActionResponseError from './ActionResponseError.tsx';
 
@@ -86,6 +89,7 @@ async function processActionResponse(
     lastPlayerId: PlayerID | null;
     lastUnitId: number | null;
   },
+  playerHasReward: PlayerHasRewardFunction,
 ): Promise<State | null> {
   const { factionNames, map, vision } = state;
   const { requestFrame, scrollIntoView, update } = actions;
@@ -253,6 +257,7 @@ async function processActionResponse(
           actions,
           actionResponse,
           state,
+          actionResponse.supply || null,
           (state) => {
             // All updates are handled elsewhere in this case.
             requestFrame(() => resolve(null));
@@ -261,7 +266,6 @@ async function processActionResponse(
               map: isFakeEndTurn(actionResponse) ? state.map : newMap,
             };
           },
-          actionResponse.supply,
         ),
       }));
       break;
@@ -352,20 +356,8 @@ async function processActionResponse(
       requestFrame(() => resolve({ ...state, ...newState, map: newMap }));
       break;
     }
-    case 'Rescue': {
-      await update((state) =>
-        actionResponse.from
-          ? rescueAction(actionResponse, state, resolveWithNull)
-          : addRescueAnimation(
-              newMap,
-              actionResponse.to,
-              actionResponse.player,
-              state,
-              resolveWithNull,
-            ),
-      );
-      break;
-    }
+    case 'Rescue':
+      return rescueAction(actions, ...remoteActionResponse);
     case 'Sabotage': {
       await update((state) =>
         actionResponse.from
@@ -386,6 +378,7 @@ async function processActionResponse(
           state,
           actionResponse.units.toArray(),
           actionResponse.teams,
+          actionResponse.units.size >= 5 ? 'fast' : 'slow',
           (state) => {
             requestFrame(() =>
               resolve({
@@ -487,7 +480,8 @@ async function processActionResponse(
     }
     case 'GameEnd': {
       const { toPlayer } = actionResponse;
-      if (!toPlayer) {
+      const team = getMatchingTeam(map, actionResponse);
+      if (!toPlayer || !team) {
         await update((currentState) => ({
           ...state,
           animations: currentState.animations.set(new AnimationKey(), {
@@ -501,62 +495,25 @@ async function processActionResponse(
         break;
       }
 
-      const winners = [
-        ...map
-          .getTeam(toPlayer)
-          .players.map(({ id }) => id)
-          .values(),
-      ];
-
-      const possiblePositions = [
-        ...map.buildings
-          .filter((building) => map.matchesTeam(building, toPlayer))
-          .keys(),
-        ...map.units.filter((unit) => map.matchesTeam(unit, toPlayer)).keys(),
-      ];
-
-      const animateFireworks = (
-        state: State,
-        positions: ReadonlyArray<Vector>,
-        onComplete: StateToStateLike,
-      ): StateLike | null => {
-        const position = positions?.[0];
-        return position
-          ? {
-              animations: state.animations.set(position, {
-                onComplete: (state: StateLike) =>
-                  animateFireworks(
-                    {
-                      ...state,
-                      animations: state.animations!.delete(position),
-                    } as State,
-                    positions.slice(1),
-                    onComplete,
-                  ),
-                type: 'fireworks',
-              }),
-            }
-          : onComplete(state);
-      };
-
-      const color = winners.slice();
+      const winners = [...team.players.map(({ id }) => id).values()];
       const winnerList = intlList(
         winners.map(getTranslatedFactionName.bind(null, factionNames)),
         Conjunctions.AND,
         Delimiters.COMMA,
       );
-
-      const count =
+      const fireworks =
         state.currentViewer && winners.includes(state.currentViewer) ? 7 : 3;
       await update((currentState) => ({
         ...state,
         animations: currentState.animations.set(new AnimationKey(), {
-          color,
+          color: winners,
           length: 'short',
           onComplete: (state) =>
             animateFireworks(
               state,
-              arrayShuffle(possiblePositions).slice(0, count),
+              arrayShuffle([
+                ...getPossibleFireworksPositions(map, toPlayer),
+              ]).slice(0, fireworks),
               (state) => {
                 resolve({
                   ...state,
@@ -596,8 +553,8 @@ async function processActionResponse(
             type: 'EndTurn',
           },
           state,
+          null,
           resolveWithNull,
-          [],
         ),
       }));
       break;
@@ -611,23 +568,63 @@ async function processActionResponse(
     case 'SetViewer':
       return { ...state, map: newMap };
     case 'BuySkill':
-      return buySkillAction(actions, state, actionResponse);
+      return buySkillAction(actions, actionResponse);
     case 'ReceiveReward': {
       const { reward } = actionResponse;
-      if (reward.type === 'skill') {
-        return buySkillAction(actions, state, actionResponse);
+      const rewardType = reward.type;
+      switch (rewardType) {
+        case 'Skill': {
+          if (isSkillRewardActionResponse(actionResponse)) {
+            if (map.getPlayer(actionResponse.player).skills.has(reward.skill)) {
+              break;
+            }
+
+            return buySkillAction(actions, actionResponse);
+          }
+
+          throw new UnknownTypeError(
+            'processActionResponse:ReceiveReward',
+            `${actionResponse.type} - ${rewardType}`,
+          );
+        }
+        case 'UnitPortraits': {
+          const player = map.getPlayer(actionResponse.player);
+          if (
+            player.isHumanPlayer() &&
+            !playerHasReward(map, actionResponse.player, actionResponse)
+          ) {
+            return receivePortraitAnimation(actions, state, actionResponse);
+          }
+          break;
+        }
+        default: {
+          rewardType satisfies never;
+          throw new UnknownTypeError(
+            'processActionResponse:ReceiveReward',
+            rewardType,
+          );
+        }
       }
+
+      requestFrame(() =>
+        resolve({
+          ...state,
+          map: newMap,
+        }),
+      );
       break;
     }
     case 'ActivatePower':
       return activatePowerAction(actions, state, actionResponse);
+    case 'OptionalObjective':
     case 'SecretDiscovered':
-      return secretDiscoveredAnimation(actions, state, actionResponse);
+      return objectiveAnimation(newMap, actions, state, actionResponse);
     default: {
       actionResponse satisfies never;
       throw new UnknownTypeError('processActionResponse', type);
     }
   }
+
   return promise;
 }
 
@@ -637,6 +634,7 @@ export default async function processActionResponses(
   gameActionResponses: GameActionResponses,
   animationConfigs: AnimationConfigs,
   fastButtonIsPressed: { current: boolean },
+  playerHasReward: PlayerHasRewardFunction,
 ): Promise<State> {
   let lastActionResponse: ActionResponse | null = null;
   const messageState = { count: 0, lastPlayerId: null, lastUnitId: null };
@@ -665,6 +663,7 @@ export default async function processActionResponses(
           actions,
           response.actionResponse,
           messageState,
+          playerHasReward,
         )),
         behavior: new NullBehavior(),
         lastActionResponse,

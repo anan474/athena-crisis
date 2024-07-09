@@ -802,7 +802,7 @@ export const Beach = new TileInfo(
 export const Campsite = new TileInfo(
   11,
   'Campsite',
-  `Unknown`,
+  `Campsites can be used to build a Shelter which can heal soldiers.`,
   TileTypes.Campsite,
   { cover: 15, movement: PlainMovementCosts },
   {
@@ -1416,7 +1416,7 @@ export const Island = new TileInfo(
   TileTypes.Sea,
   {
     cover: 25,
-    movement: Reef.configuration.movement,
+    movement: Beach.configuration.movement,
   },
   {
     animation: HorizontalSeaAnimation,

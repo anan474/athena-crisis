@@ -5,10 +5,10 @@ import { Reward } from '@deities/athena/map/Reward.tsx';
 import { Teams } from '@deities/athena/map/Team.tsx';
 import Unit, { DryUnit } from '@deities/athena/map/Unit.tsx';
 import Vector from '@deities/athena/map/Vector.tsx';
-import { WinCondition } from '@deities/athena/WinConditions.tsx';
+import { Objective } from '@deities/athena/Objectives.tsx';
 import ImmutableMap from '@nkzw/immutable-map';
-import { GameOverActionResponses } from './GameOver.tsx';
 import { HiddenActionResponse } from './HiddenAction.tsx';
+import { ObjectiveActionResponses } from './Objective.tsx';
 
 export type MoveActionResponse = Readonly<{
   completed?: boolean;
@@ -152,6 +152,7 @@ export type HealActionResponse = Readonly<{
 
 export type RescueActionResponse = Readonly<{
   from?: Vector;
+  name?: number;
   player: PlayerID;
   to: Vector;
   type: 'Rescue';
@@ -181,6 +182,7 @@ export type SetViewerActionResponse = Readonly<{
 }>;
 
 export type ReceiveRewardActionResponse = Readonly<{
+  permanent?: boolean;
   player: PlayerID;
   reward: Reward;
   type: 'ReceiveReward';
@@ -199,7 +201,8 @@ export type ActivatePowerActionResponse = Readonly<{
 }>;
 
 export type SecretDiscoveredActionResponse = Readonly<{
-  condition: WinCondition;
+  objective: Objective;
+  toPlayer?: PlayerID;
   type: 'SecretDiscovered';
 }>;
 
@@ -235,7 +238,7 @@ export type ActionResponse =
   | UnfoldActionResponse
   // List of further Action Responses.
   | HiddenActionResponse
-  | GameOverActionResponses;
+  | ObjectiveActionResponses;
 
 export type ActionResponses = ReadonlyArray<ActionResponse>;
 export type ActionResponseType = ActionResponse['type'];

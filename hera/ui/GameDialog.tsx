@@ -4,6 +4,8 @@ import Building from '@deities/athena/map/Building.tsx';
 import { PlayerID } from '@deities/athena/map/Player.tsx';
 import Unit from '@deities/athena/map/Unit.tsx';
 import MapData from '@deities/athena/MapData.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
+import groupBy from '@deities/hephaestus/groupBy.tsx';
 import isPresent from '@deities/hephaestus/isPresent.tsx';
 import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import useBlockInput from '@deities/ui/controls/useBlockInput.tsx';
@@ -24,14 +26,15 @@ import LeaderCard from '../card/LeaderCard.tsx';
 import LeaderTitle from '../card/LeaderTitle.tsx';
 import TileCard from '../card/TileCard.tsx';
 import UnitCard from '../card/UnitCard.tsx';
+import ObjectiveDescription from '../objectives/ObjectiveDescription.tsx';
 import {
   CurrentGameInfoState,
   FactionNames,
+  LeaderInfoState,
   MapInfoState,
   SkillInfoState,
   State,
 } from '../Types.tsx';
-import WinConditionDescription from '../win-conditions/WinConditionDescription.tsx';
 import SkillDialog, { SkillIcon } from './SkillDialog.tsx';
 
 type MapInfoPanelState = Readonly<
@@ -66,10 +69,12 @@ const MapInfoPanel = memo(function MapInfoPanel({
 }: {
   currentViewer: PlayerID | null;
   factionNames: FactionNames;
-  info: MapInfoState;
+  info: MapInfoState | LeaderInfoState;
   map: MapData;
 }) {
-  const { building, tile, unit } = info;
+  const unit = info.unit;
+  const { building, tile } =
+    info.type === 'map-info' ? info : { building: null, tile: null };
   const { buildingState, leaderState, states, tileState, unitState } =
     useMemo(() => {
       const unitState = unit
@@ -96,6 +101,11 @@ const MapInfoPanel = memo(function MapInfoPanel({
             type: 'tile',
           } as const)
         : null;
+
+      if (info.type === 'leader-info' && leaderState) {
+        const states: ReadonlyArray<MapInfoPanelState> = [leaderState];
+        return { leaderState, states };
+      }
       const states: ReadonlyArray<MapInfoPanelState> = [
         unitState,
         leaderState,
@@ -103,9 +113,9 @@ const MapInfoPanel = memo(function MapInfoPanel({
         tileState,
       ].filter(isPresent);
       return { buildingState, leaderState, states, tileState, unitState };
-    }, [unit, building, tile]);
+    }, [unit, building, tile, info.type]);
   const [panel, setPanel] = useState<MapInfoPanelState>(
-    unitState || buildingState || tileState || { type: 'none' },
+    unitState || leaderState || buildingState || tileState || { type: 'none' },
   );
   useDialogNavigation(states, states.indexOf(panel), setPanel);
 
@@ -113,7 +123,7 @@ const MapInfoPanel = memo(function MapInfoPanel({
     'accept',
     useCallback(
       (event) => {
-        if (info.create) {
+        if (info.type === 'map-info' && info.create) {
           event.preventDefault();
           info.create();
         }
@@ -191,7 +201,7 @@ const MapInfoPanel = memo(function MapInfoPanel({
             <fbt desc="Label for field tab">Field</fbt>
           </MapInfoTab>
         )}
-        {info.create && (unit || building) && (
+        {info.type === 'map-info' && info.create && (unit || building) && (
           <MapInfoTab end onClick={info.create}>
             {unit ? (
               <fbt desc="Button to create a unit">Deploy</fbt>
@@ -205,7 +215,7 @@ const MapInfoPanel = memo(function MapInfoPanel({
   );
 });
 
-const winConditionsPanel = Symbol('win-conditions');
+const objectivesPanel = Symbol('objectives');
 
 const GameInfoPanel = memo(function GameInfoPanel({
   endGame,
@@ -219,13 +229,13 @@ const GameInfoPanel = memo(function GameInfoPanel({
   map: MapData;
 }) {
   const {
-    config: { winConditions },
+    config: { objectives },
   } = map;
 
-  const [panel, setPanel] = useState<symbol | string>(winConditionsPanel);
+  const [panel, setPanel] = useState<symbol | string>(objectivesPanel);
 
   const states = useMemo(
-    () => [winConditionsPanel, ...(gameInfoState.panels?.keys() || [])],
+    () => [objectivesPanel, ...(gameInfoState.panels?.keys() || [])],
     [gameInfoState.panels],
   );
   useDialogNavigation(states, states.indexOf(panel), setPanel);
@@ -252,7 +262,14 @@ const GameInfoPanel = memo(function GameInfoPanel({
     'dialog',
   );
 
-  const conditions = winConditions.filter(({ hidden }) => !hidden);
+  const visibleConditions = objectives.filter(({ hidden }) => !hidden);
+  const partition = groupBy(visibleConditions, ([, objective]) =>
+    objective.type === Criteria.Default || !objective.optional
+      ? 'required'
+      : 'optional',
+  );
+  const requiredObjectives = partition.get('required');
+  const optionalObjectives = partition.get('optional');
   return (
     <>
       <DialogScrollContainer>
@@ -263,33 +280,50 @@ const GameInfoPanel = memo(function GameInfoPanel({
               <fbt desc="Headline for describing how to win">How to win</fbt>
             </h1>
             <p>
-              {conditions.length ? (
+              {visibleConditions.size ? (
                 <fbt desc="Description of how to win">
-                  Complete any win condition to win the game.
+                  Complete any objective to win the game.
                 </fbt>
               ) : (
                 <fbt desc="Win conditions are all secret">
-                  Win conditions for this game are secret.
+                  Objectives for this game are secret.
                 </fbt>
               )}
             </p>
-            {conditions.map((condition, index) => (
-              <WinConditionDescription
-                condition={condition}
+            {requiredObjectives?.map(([id, objective]) => (
+              <ObjectiveDescription
                 factionNames={factionNames}
-                key={index}
+                key={id}
+                objective={objective}
                 round={map.round}
               />
             ))}
+            {optionalObjectives && optionalObjectives.length > 0 && (
+              <>
+                <p>
+                  <fbt desc="Description of how to win">
+                    Complete optional objectives for extra rewards:
+                  </fbt>
+                </p>
+                {optionalObjectives.map(([id, objective]) => (
+                  <ObjectiveDescription
+                    factionNames={factionNames}
+                    key={id}
+                    objective={objective}
+                    round={map.round}
+                  />
+                ))}
+              </>
+            )}
           </Stack>
         )}
       </DialogScrollContainer>
       <DialogTabBar>
         <MapInfoTab
-          highlight={panel === winConditionsPanel}
-          onClick={() => setPanel(winConditionsPanel)}
+          highlight={panel === objectivesPanel}
+          onClick={() => setPanel(objectivesPanel)}
         >
-          <fbt desc="Label for win condition tab">Conditions</fbt>
+          <fbt desc="Label for win condition tab">Objectives</fbt>
         </MapInfoTab>
         {gameInfoState.panels &&
           [...gameInfoState.panels].map(([panelName, { title }]) => (
@@ -317,7 +351,7 @@ const GameDialogPanel = memo(function GameDialogPanel({
   state: { currentViewer, factionNames, map },
 }: {
   endGame?: () => void;
-  gameInfoState: CurrentGameInfoState | MapInfoState;
+  gameInfoState: CurrentGameInfoState | LeaderInfoState | MapInfoState;
   state: Pick<
     State,
     'currentViewer' | 'factionNames' | 'gameInfoState' | 'map'
@@ -337,6 +371,7 @@ const GameDialogPanel = memo(function GameDialogPanel({
         />
       );
     }
+    case 'leader-info':
     case 'map-info':
       return (
         <MapInfoPanel

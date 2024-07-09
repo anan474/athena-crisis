@@ -1,4 +1,4 @@
-import { filterBuildings } from '@deities/athena/info/Building.tsx';
+import { BuildableTiles } from '@deities/athena/info/Building.tsx';
 import { Beach, isSeaTile } from '@deities/athena/info/Tile.tsx';
 import { Ability } from '@deities/athena/info/Unit.tsx';
 import { AIBehavior } from '@deities/athena/map/AIBehavior.tsx';
@@ -6,15 +6,9 @@ import { EntityType, getEntityGroup } from '@deities/athena/map/Entity.tsx';
 import Unit from '@deities/athena/map/Unit.tsx';
 import Vector from '@deities/athena/map/Vector.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import getWinConditionVectors from './getWinConditionVectors.tsx';
+import getObjectiveVectors from './getObjectiveVectors.tsx';
 import needsSupply from './needsSupply.tsx';
 import shouldCaptureBuilding from './shouldCaptureBuilding.tsx';
-
-export const BuildableTiles = new Set(
-  filterBuildings(
-    ({ configuration: { canBeCreated } }) => canBeCreated,
-  ).flatMap(({ configuration: { placeOn } }) => (placeOn ? [...placeOn] : [])),
-);
 
 export default function getInterestingVectors(
   map: MapData,
@@ -89,7 +83,7 @@ export default function getInterestingVectors(
     }
   }
 
-  vectors.push(...getWinConditionVectors(map, unit));
+  vectors.push(...getObjectiveVectors(map, unit));
 
   if (isDefensive) {
     for (const [vector, building] of map.buildings) {

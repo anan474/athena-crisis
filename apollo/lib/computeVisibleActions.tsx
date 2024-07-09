@@ -12,6 +12,7 @@ import {
   ActionResponses,
   AttackBuildingActionResponse,
   AttackUnitActionResponse,
+  CaptureActionResponse,
   CompleteUnitActionResponse,
   CreateBuildingActionResponse,
   CreateUnitActionResponse,
@@ -223,6 +224,14 @@ const VisibleActionModifiers: Record<
   BeginTurnGameOver: true,
   BuySkill: true,
   Capture: {
+    Hidden: (
+      actionResponse: CaptureActionResponse,
+    ): null | CaptureActionResponse => {
+      const { building } = actionResponse;
+      return building && building.info.configuration.attackStatusEffect
+        ? actionResponse
+        : null;
+    },
     Source: true,
   },
   CaptureGameOver: true,
@@ -363,6 +372,7 @@ const VisibleActionModifiers: Record<
   MoveUnit: {
     Source: true,
   },
+  OptionalObjective: true,
   PreviousTurnGameOver: true,
   ReceiveReward: true,
   Rescue: {
@@ -500,11 +510,16 @@ export default function computeVisibleActions(
         actionResponse,
       );
       if (newActionResponse) {
-        const items: ReadonlyArray<ActionResponseWithMapData> = Array.isArray(
+        const items: Array<ActionResponseWithMapData> = Array.isArray(
           newActionResponse,
         )
           ? newActionResponse.map((actionResponse) => [actionResponse])
-          : [[newActionResponse]];
+          : [[newActionResponse as ActionResponse]];
+
+        const lastItem = items.at(-1);
+        if (lastItem) {
+          items[items.length - 1] = [lastItem[0], previousMap, activeMap];
+        }
         responses.push(...items);
       }
     } else {

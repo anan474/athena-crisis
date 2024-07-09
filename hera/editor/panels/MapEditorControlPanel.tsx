@@ -4,9 +4,10 @@ import MapData, { SizeVector } from '@deities/athena/MapData.tsx';
 import isPresent from '@deities/hephaestus/isPresent.tsx';
 import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import Box from '@deities/ui/Box.tsx';
-import Breakpoints, { lg, sm } from '@deities/ui/Breakpoints.tsx';
+import Breakpoints, { lg, sm, xl } from '@deities/ui/Breakpoints.tsx';
 import Button from '@deities/ui/Button.tsx';
 import { applyVar } from '@deities/ui/cssVar.tsx';
+import Dropdown from '@deities/ui/Dropdown.tsx';
 import useAlert from '@deities/ui/hooks/useAlert.tsx';
 import useMedia from '@deities/ui/hooks/useMedia.tsx';
 import usePress, { UsePressProps } from '@deities/ui/hooks/usePress.tsx';
@@ -15,15 +16,19 @@ import InlineLink, { KeyboardShortcut } from '@deities/ui/InlineLink.tsx';
 import pixelBorder from '@deities/ui/pixelBorder.tsx';
 import Stack from '@deities/ui/Stack.tsx';
 import { css } from '@emotion/css';
+import Bottom from '@iconify-icons/pixelarticons/layout-footer.js';
+import Left from '@iconify-icons/pixelarticons/layout-sidebar-left.js';
 import More from '@iconify-icons/pixelarticons/more-vertical.js';
 import { fbt } from 'fbt';
 import { useCallback, useRef } from 'react';
-import BottomDrawer from '../../bottom-drawer/BottomDrawer.tsx';
+import Drawer, { DrawerPosition } from '../../drawer/Drawer.tsx';
 import { UserWithFactionNameAndSkills } from '../../hooks/useUserMap.tsx';
 import { StateWithActions } from '../../Types.tsx';
+import replaceEffect from '../lib/replaceEffect.tsx';
 import {
   EditorState,
   MapObject,
+  MapPerformanceMetricsEstimationFunction,
   PreviousMapEditorState,
   SaveMapFunction,
   SetEditorStateFunction,
@@ -35,13 +40,15 @@ import EffectsPanel from './EffectsPanel.tsx';
 import EntityPanel from './EntityPanel.tsx';
 import EvaluationPanel from './EvaluationPanel.tsx';
 import MapEditorSettingsPanel from './MapEditorSettingsPanel.tsx';
+import ObjectivePanel from './ObjectivePanel.tsx';
 import RestrictionsPanel from './RestrictionsPanel.tsx';
 import SetupPanel from './SetupPanel.tsx';
-import WinConditionPanel from './WinConditionPanel.tsx';
 
 export default function MapEditorControlPanel({
   actions,
+  drawerPosition,
   editor,
+  estimateMapPerformance,
   expand,
   fillMap,
   inset = 0,
@@ -53,6 +60,7 @@ export default function MapEditorControlPanel({
   resize,
   restorePreviousState,
   saveMap,
+  setDrawerPosition,
   setEditorState,
   setMap,
   setMapName,
@@ -63,7 +71,9 @@ export default function MapEditorControlPanel({
   user,
   visible,
 }: StateWithActions & {
+  drawerPosition: DrawerPosition;
   editor: EditorState;
+  estimateMapPerformance?: MapPerformanceMetricsEstimationFunction;
   expand: boolean;
   fillMap: () => void;
   inset?: number;
@@ -75,6 +85,7 @@ export default function MapEditorControlPanel({
   resize: (size: SizeVector, origin: Set<ResizeOrigin>) => void;
   restorePreviousState: () => void;
   saveMap: SaveMapFunction;
+  setDrawerPosition: (position: DrawerPosition) => void;
   setEditorState: SetEditorStateFunction;
   setMap: SetMapFunction;
   setMapName: (name: string) => void;
@@ -92,22 +103,15 @@ export default function MapEditorControlPanel({
   const updateEffect = useCallback(
     (effect: Effect) => {
       const { effect: currentEffect, trigger } = editor.scenario;
-      const newEffects = new Map(editor.effects);
-      const effectList = newEffects.get(trigger);
-      if (effectList) {
-        const newEffectList = new Set(
-          [...effectList].map((item) =>
-            item === currentEffect ? effect : item,
-          ),
-        );
-        newEffects.set(trigger, newEffectList);
-        setEditorState({
-          effects: newEffects,
-          scenario: { effect, trigger },
-        });
-      }
+      setEditorState({
+        action: editor.action
+          ? { ...editor.action, action: effect.actions[editor.action.actionId] }
+          : undefined,
+        effects: replaceEffect(editor.effects, trigger, currentEffect, effect),
+        scenario: { effect, trigger },
+      });
     },
-    [editor.effects, editor.scenario, setEditorState],
+    [editor.action, editor.effects, editor.scenario, setEditorState],
   );
   const setScenario = useCallback(
     (scenario: Scenario) => setEditorState({ scenario }),
@@ -115,20 +119,24 @@ export default function MapEditorControlPanel({
   );
 
   return (
-    <BottomDrawer
+    <Drawer
       expand={expand}
       inset={inset}
       mode={editor.mode}
+      position={drawerPosition}
       ref={ref}
       sidebar={
         <Sidebar
           actions={actions}
           editor={editor}
+          expand={expand}
           mapObject={mapObject}
+          position={drawerPosition}
           previousState={previousState}
           resetMap={resetMap}
           restorePreviousState={restorePreviousState}
           setEditorState={setEditorState}
+          setPosition={setDrawerPosition}
           state={state}
           togglePlaytest={togglePlaytest}
         />
@@ -176,21 +184,28 @@ export default function MapEditorControlPanel({
                 editor={editor}
                 hasContentRestrictions={!isAdmin}
                 map={state.map}
+                position={drawerPosition}
                 scenario={editor.scenario}
                 scrollRef={ref}
                 setEditorState={setEditorState}
+                setMap={setMap}
                 setScenario={setScenario}
                 updateEffect={updateEffect}
                 user={user}
               />
             );
-          case 'conditions':
+          case 'objectives':
             return (
-              <WinConditionPanel
+              <ObjectivePanel
                 actions={actions}
+                campaignEdges={mapObject?.campaigns.edges}
                 editor={editor}
+                hasContentRestrictions={!isAdmin}
+                isAdmin={isAdmin}
+                mapId={mapObject?.id}
                 setEditorState={setEditorState}
                 state={state}
+                user={user}
               />
             );
           case 'restrictions':
@@ -216,6 +231,8 @@ export default function MapEditorControlPanel({
             return (
               <MapEditorSettingsPanel
                 actions={actions}
+                canEditPerformance={!!mapObject?.campaigns.edges.length}
+                estimateMapPerformance={estimateMapPerformance}
                 isAdmin={isAdmin}
                 mapName={mapName}
                 mapObject={mapObject}
@@ -236,26 +253,32 @@ export default function MapEditorControlPanel({
           }
         }
       })()}
-    </BottomDrawer>
+    </Drawer>
   );
 }
 
 const Sidebar = ({
   editor,
+  expand,
   mapObject,
+  position,
   previousState,
   resetMap,
   restorePreviousState,
   setEditorState,
+  setPosition,
   state,
   togglePlaytest,
 }: StateWithActions & {
   editor: EditorState;
+  expand: boolean;
   mapObject?: MapObject | null;
+  position: DrawerPosition;
   previousState: PreviousMapEditorState | null;
   resetMap: () => void;
   restorePreviousState: () => void;
   setEditorState: SetEditorStateFunction;
+  setPosition: (position: DrawerPosition) => void;
   togglePlaytest: (
     map: MapData,
     _?: boolean,
@@ -263,9 +286,17 @@ const Sidebar = ({
   ) => void;
 }) => {
   const { alert } = useAlert();
+  const isBottom = position === 'bottom';
+  const drawerIsLarge = isBottom || expand;
   const isMedium = useMedia(`(min-width: ${sm}px)`);
   const isLarge = useMedia(`(min-width: ${lg}px)`);
-  const partition = isLarge ? 4 : isMedium ? 3 : 2;
+  const isXLarge = useMedia(`(min-width: ${xl}px)`);
+  const secondaryWidthCheck = isBottom
+    ? isMedium
+    : drawerIsLarge
+      ? isLarge
+      : isXLarge;
+  const partition = drawerIsLarge && isLarge ? 4 : secondaryWidthCheck ? 3 : 2;
 
   const buttonProps = usePress({
     onLongPress: useCallback(() => {
@@ -333,17 +364,17 @@ const Sidebar = ({
       onClick={() => setEditorState({ mode: 'decorators' })}
       selectedText={editor.mode === 'decorators'}
     >
-      <KeyboardShortcut shortcut="o" />
+      <KeyboardShortcut shortcut="c" />
       <fbt desc="Button to change map decorators">Decorations</fbt>
     </InlineLink>,
     <InlineLink
       className={linkStyle}
-      key="conditions"
-      onClick={() => setEditorState({ mode: 'conditions' })}
-      selectedText={editor.mode === 'conditions'}
+      key="objectives"
+      onClick={() => setEditorState({ mode: 'objectives' })}
+      selectedText={editor.mode === 'objectives'}
     >
-      <KeyboardShortcut shortcut="c" />
-      <fbt desc="Button to change map conditions">Conditions</fbt>
+      <KeyboardShortcut shortcut="o" />
+      <fbt desc="Button to change map objectives">Objectives</fbt>
     </InlineLink>,
     <InlineLink
       className={linkStyle}
@@ -414,19 +445,39 @@ const Sidebar = ({
     secondary.unshift(last);
   }
 
+  if (isMedium) {
+    secondary.unshift(
+      <Stack gap key="icons" reverse start>
+        <InlineLink
+          onClick={() => setPosition('left')}
+          selected={position === 'left'}
+        >
+          <Icon icon={Left} />
+        </InlineLink>
+        <InlineLink
+          onClick={() => setPosition('bottom')}
+          selected={position === 'bottom'}
+        >
+          <Icon icon={Bottom} />
+        </InlineLink>
+      </Stack>,
+    );
+  }
+
   return (
     <Stack alignCenter className={topPaddingStyle} flex1 gap={16} nowrap>
       <Box alignCenter flex1 gap={16} nowrap>
         {primary}
         {secondary.length && (
-          <div className={moreContainerStyle}>
-            <Icon icon={More} />
-            <div className={moreStyle}>
-              <Box className={moreInnerStyle} gap vertical>
-                {secondary}
-              </Box>
-            </div>
-          </div>
+          <Dropdown
+            className={moreContainerStyle}
+            dropdownClassName={moreStyle}
+            title={<Icon icon={More} />}
+          >
+            <Box className={moreInnerStyle} gap vertical>
+              {secondary}
+            </Box>
+          </Dropdown>
         )}
       </Box>
       <Button className={buttonStyle} {...buttonProps}>
@@ -463,33 +514,12 @@ const buttonStyle = css`
 
 const moreContainerStyle = css`
   display: inline-flex;
-  cursor: pointer;
-  position: relative;
-
-  & > div {
-    transition-delay: 150ms;
-  }
-  &:hover > div {
-    opacity: 1;
-    pointer-events: auto;
-    transform: scale(1);
-    transition-delay: 0;
-  }
 `;
 
 const moreStyle = css`
-  cursor: initial;
-  opacity: 0;
-  pointer-events: none;
-  position: absolute;
-  transform: scale(0.9);
-  transition:
-    opacity 150ms ease,
-    transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 100;
-
   right: -12px;
   top: 8px;
+  z-index: 100;
 `;
 
 const moreInnerStyle = css`

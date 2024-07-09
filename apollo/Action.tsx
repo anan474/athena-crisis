@@ -7,6 +7,7 @@ import {
 import { Lightning } from '@deities/athena/info/Tile.tsx';
 import { Ability, getUnitInfo, Weapon } from '@deities/athena/info/Unit.tsx';
 import { getDeterministicUnitName } from '@deities/athena/info/UnitNames.tsx';
+import assignDeterministicUnitNames from '@deities/athena/lib/assignDeterministicUnitNames.tsx';
 import calculateDamage from '@deities/athena/lib/calculateDamage.tsx';
 import calculateFunds from '@deities/athena/lib/calculateFunds.tsx';
 import canBuild from '@deities/athena/lib/canBuild.tsx';
@@ -24,6 +25,8 @@ import getMovementPath from '@deities/athena/lib/getMovementPath.tsx';
 import getRescuableVectors from '@deities/athena/lib/getRescuableVectors.tsx';
 import getSabotageableVectors from '@deities/athena/lib/getSabotageableVectors.tsx';
 import getUnitsToRefill from '@deities/athena/lib/getUnitsToRefill.tsx';
+import hasUnitsOrProductionBuildings from '@deities/athena/lib/hasUnitsOrProductionBuildings.tsx';
+import maybeCreatePlayers from '@deities/athena/lib/maybeCreatePlayers.tsx';
 import { AIBehavior } from '@deities/athena/map/AIBehavior.tsx';
 import Building from '@deities/athena/map/Building.tsx';
 import {
@@ -160,7 +163,7 @@ type SabotageAction = Readonly<{
   type: 'Sabotage';
 }>;
 
-type SpawnEffectAction = Readonly<{
+export type SpawnEffectAction = Readonly<{
   player?: DynamicPlayerID;
   teams?: Teams;
   type: 'SpawnEffect';
@@ -624,14 +627,16 @@ function createBuilding(map: MapData, { from, id }: CreateBuildingAction) {
   }
 
   const infoB = getBuildingInfo(id);
+  const player = map.getPlayer(unit);
   if (
     infoB &&
     map.isCurrentPlayer(unit) &&
     !unit.isCompleted() &&
     !map.buildings.has(from) &&
     unit.info.hasAbility(Ability.CreateBuildings) &&
-    map.getPlayer(unit).funds >= infoB.configuration.cost &&
-    canBuild(map, infoB, unit.player, from)
+    player.funds >= infoB.configuration.cost &&
+    canBuild(map, infoB, unit.player, from) &&
+    (infoB.canBuildUnits() || hasUnitsOrProductionBuildings(map, player))
   ) {
     return {
       building: infoB.create(unit.player, { label: unit.label }).complete(),
@@ -782,7 +787,15 @@ function rescue(map: MapData, { from, to }: RescueAction) {
     return null;
   }
 
-  return { from, player: unitA.player, to, type: 'Rescue' } as const;
+  return {
+    from,
+    name: unitB.isBeingRescuedBy(unitA.player)
+      ? getDeterministicUnitName(map, to, unitA.player, unitB.info)
+      : undefined,
+    player: unitA.player,
+    to,
+    type: 'Rescue',
+  } as const;
 }
 
 function sabotage(map: MapData, { from, to }: SabotageAction) {
@@ -807,17 +820,27 @@ function spawnEffect(
   map: MapData,
   { player: dynamicPlayer, teams, units }: SpawnEffectAction,
 ) {
-  const player = dynamicPlayer
-    ? resolveDynamicPlayerID(map, dynamicPlayer)
-    : null;
-  units = units
-    .filter((unit, vector) => canDeploy(map, unit.info, vector, false))
-    .map((unit) => (player != null ? unit.setPlayer(player) : unit));
-  return units.size
+  const player =
+    dynamicPlayer != null ? resolveDynamicPlayerID(map, dynamicPlayer) : null;
+  let newUnits = ImmutableMap<Vector, Unit>();
+
+  for (const [vector, unit] of units) {
+    const deployVector = vector
+      .expand()
+      .find((vector) => canDeploy(map, unit.info, vector, true));
+
+    if (deployVector) {
+      const newUnit = player != null ? unit.setPlayer(player) : unit;
+      map = map.copy({ units: map.units.set(deployVector, newUnit) });
+      newUnits = newUnits.set(deployVector, newUnit);
+    }
+  }
+
+  return newUnits.size
     ? ({
-        teams,
+        teams: maybeCreatePlayers(map, teams, newUnits),
         type: 'Spawn',
-        units,
+        units: assignDeterministicUnitNames(map, newUnits),
       } as const)
     : null;
 }

@@ -517,6 +517,7 @@ export class UnitInfo {
     if (!this.hasLinkedCharacterName()) {
       if (typeof name === 'string') {
         Object.defineProperty(this, 'characterName', {
+          configurable: true,
           value: name,
           writable: true,
         });
@@ -1800,7 +1801,7 @@ export const Jeep = new UnitInfo(
   null,
   {
     limit: 2,
-    types: new Set([EntityType.Infantry]),
+    types: new Set([EntityType.Infantry, EntityType.AirInfantry]),
   },
   {
     direction: 'left',
@@ -2006,7 +2007,7 @@ export const AntiAir = new UnitInfo(
 export const HeavyArtillery = new UnitInfo(
   UnitID.HeavyArtillery,
   'Heavy Artillery',
-  'Unknown',
+  'Joey',
   'male',
   `Heavy Artilleries are feared for their large attack range. They deal severe ranged damage, but they are vulnerable to any unit that can get close to them.`,
   `To cancel out the noise of the battlefield, {name} listens to jazz music on his headphones. It is not clear if it is the headphones or his goofy attitude that require confirming every target coordinate up to five times, but at least he never misses.`,
@@ -2363,7 +2364,7 @@ export const Jetpack = new UnitInfo(
 export const SeaPatrol = new UnitInfo(
   21,
   'Sea Patrol',
-  'Unknown',
+  'Marika',
   'female',
   `Low-altitude Sea Patrol units are inexpensive and incredibly useful for securing coastal areas against ships and other low-altitude aircraft. However, their low mobility makes them particularly vulnerable to air attacks, and crash landings on islands are not uncommon.`,
   `{name} has a loyal, easy-going, and happy personality. She tends to get angry when one of her friends gets stranded on an island – not because of what happened, but because it affects the perfect record of her squad. Since she is always the first to volunteer for a rescue mission, she at least gets to maintain the record for most rescues.`,
@@ -2637,7 +2638,7 @@ export const Destroyer = new UnitInfo(
 export const Frigate = new UnitInfo(
   29,
   'Frigate',
-  'Unknown',
+  'Thomas',
   'male',
   `The Frigate is every naval fleet's workhorse. It's a dual short- and long-range unit that is highly effective against ships. Its lower mobility is countered by its ability to attack from a distance.`,
   `{name} is a happy sailor who enjoys the rough seas and thrill of chasing enemy aircraft. Aside from the battlefield, {name} is a talented musician who plays the violin. He is known for his ability to calm the crew with his music, even in the most intense situations.`,
@@ -2752,7 +2753,7 @@ const EntityTypesToSupport = new Set([
 export const SupportShip = new UnitInfo(
   32,
   'Support Ship',
-  'Unknown',
+  'Lee',
   'male',
   `The Support Ship can heal and resupply both ground units and ships in its vicinity. While it is not usually seen on the frontlines when a battle commences, it is essential for maintaining supply lines and keeping a fleet in fighting shape.`,
   `{name} grew up poor in a landlocked country and never saw the sea until he joined the defense forces. The vastness of the ocean and the power of the ships captivated him from the start. He's always had a knack for fixing things, and now he uses his skills to keep the fleet in top shape. Away from the battlefield, he enjoys playing the guitar in a metal band.`,
@@ -2789,7 +2790,7 @@ export const SupportShip = new UnitInfo(
 export const Corvette = new UnitInfo(
   33,
   'Corvette',
-  'Unknown',
+  'Stephanie',
   'female',
   `The Corvette is the smallest of ships, but its torpedoes can deal significant damage to other ships. Coupled with its low cost and high mobility, it can be devastating to even the largest of fleets when it catches them off guard.`,
   `{name} is small but mighty. She is known for her quick wit and her ability to outmaneuver larger ships. Despite having a family to care for, she frequently volunteers for the most dangerous missions. Her bravery and skill have earned her the respect of her peers and the nickname "Mama Shark".`,
@@ -2824,7 +2825,7 @@ export const Mammoth = new UnitInfo(
   'Shamus',
   'male',
   `Unmatched in firepower on the battlefield, the Mammoth is slow but can deal massive damage to distant units. Novel technology enables the Mammoth to move and attack simultaneously, making it extremely dangerous in the hands of a skilled commander.`,
-  `Operating a gigantig siege artillery is no easy task, but for {name} it's mostly upside! When he is not moving into position or preparing a trajectory, he often spends his free time reading and gardening, all the while humming in tune with the ringing of his ears. Despite his positive demeanor, he is quietly thankful he can remain further away from action.`,
+  `Operating a gigantic siege artillery is no easy task, but for {name} it's mostly upside! When he is not moving into position or preparing a trajectory, he often spends his free time reading and gardening, all the while humming in tune with the ringing of his ears. Despite his positive demeanor, he is quietly thankful he can remain further away from action.`,
   35,
   EntityType.Rail,
   MovementTypes.Rail,
@@ -2854,7 +2855,7 @@ export const Mammoth = new UnitInfo(
 export const TransportTrain = new UnitInfo(
   35,
   'Transport Train',
-  'Unknown',
+  'Mara',
   'female',
   `While primarily a unit for transporting other ground units to the frontlines quickly, the Transport Train also boasts a formidable attack. Coupled with its high defense it can clear a path before unloading troops.`,
   `{name} has had a fair amount of setbacks in her life, but she always manages to get back on track. She is reliable but often dramatic. Known for her love of trains, she is also a talented singer, often entertaining her passengers with songs inspired by her life experiences.`,
@@ -2928,7 +2929,7 @@ export const Dinosaur = new UnitInfo(
   DefaultUnitAbilities,
   {
     type: AttackType.ShortRange,
-    weapons: [Weapons.Bite],
+    weapons: [Weapons.Bite.withDamage(buff(Weapons.Bite.damage, 40))],
   },
   null,
   {
@@ -2950,7 +2951,7 @@ export const Dinosaur = new UnitInfo(
 export const HeavyTank = new UnitInfo(
   37,
   'Heavy Tank',
-  'Unknown',
+  'Marc',
   'male',
   `The Heavy Tank strikes a perfect balance between firepower, defense, and mobility. It excels in most head-to-head battles and can withstand significant damage. Armies typically field a few Heavy Tanks to lead charges and break through enemy lines.`,
   `His comrades joke that {name} is living in his tank. He is quiet and reserved, preferring to let his actions speak for him. Not much is known about {name}, except that he loves eating sweets made from rice and red beans, a favorite from his home country.`,
@@ -3122,7 +3123,7 @@ export const ArtilleryHumvee = new UnitInfo(
 export const SupplyTrain = new UnitInfo(
   41,
   'Supply Train',
-  'Unknown',
+  'Joseph',
   'male',
   `Supply Trains are among the most cost effective units when it comes to attacking other ground units. They are capable of supplying other units on the battlefield and keeping supply lines open.`,
   `{name} always yearns for the serene landscape of his mountainous home region. He enjoys meditating, sitting on a mat in his traditional house and listening to the wind chimes in his garden. Reflecting on the contrast between the chaos of the battlefield and the peacefulness of his home, he often inspires those around him to balance the loudness with calm.`,
@@ -3258,11 +3259,18 @@ export const Dragon = new UnitInfo(
   {
     type: AttackType.ShortRange,
     weapons: [
-      Weapons.Flamethrower.withSupply(6).withAnimationPositions({
-        down: sprite(-0.4, 1),
-        horizontal: sprite(-0.85, -0.05),
-        up: sprite(0.4, -0.85),
-      }),
+      Weapons.Flamethrower.withDamage(
+        buff(
+          new Map([...Weapons.Flamethrower.damage, [EntityType.Ship, 70]]),
+          40,
+        ),
+      )
+        .withSupply(6)
+        .withAnimationPositions({
+          down: sprite(-0.4, 1),
+          horizontal: sprite(-0.85, -0.05),
+          up: sprite(0.4, -0.85),
+        }),
     ],
   },
   null,
@@ -3386,8 +3394,16 @@ export const Zombie = new UnitInfo(
     type: AttackType.ShortRange,
     weapons: [
       new Weapon(
-        'Bite',
-        buff(Weapons.Bite.damage, -50),
+        'Zombie Bite',
+        buff(
+          new Map([
+            ...Weapons.Bite.damage,
+            [EntityType.LowAltitude, 100],
+            [EntityType.Rail, 80],
+            [EntityType.Ship, 80],
+          ]),
+          -50,
+        ),
         BiteAnimation.withSound('Attack/ZombieBite'),
         BiteHitAnimation,
         5,
@@ -3742,11 +3758,7 @@ const Units = [
   AIU,
 ];
 
-export const InitialAvailablePortraits = new Set([
-  Pioneer,
-  Sniper,
-  Flamethrower,
-]);
+export const InitialPortraits = new Set([Pioneer, Sniper, Flamethrower]);
 
 export const SpecialUnits = new Set([
   Alien,

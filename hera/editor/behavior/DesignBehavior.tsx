@@ -19,6 +19,8 @@ import canPlaceDecorator from '@deities/athena/lib/canPlaceDecorator.tsx';
 import canPlaceTile from '@deities/athena/lib/canPlaceTile.tsx';
 import getActivePlayers from '@deities/athena/lib/getActivePlayers.tsx';
 import getDecoratorIndex from '@deities/athena/lib/getDecoratorIndex.tsx';
+import maybeCreatePlayers from '@deities/athena/lib/maybeCreatePlayers.tsx';
+import mergeTeams from '@deities/athena/lib/mergeTeams.tsx';
 import verifyTiles from '@deities/athena/lib/verifyTiles.tsx';
 import Building from '@deities/athena/map/Building.tsx';
 import { getDecoratorLimit } from '@deities/athena/map/Configuration.tsx';
@@ -49,6 +51,7 @@ import {
 } from '../../Types.tsx';
 import FlashFlyout from '../../ui/FlashFlyout.tsx';
 import { FlyoutItem } from '../../ui/Flyout.tsx';
+import changePlayer from '../lib/changePlayer.tsx';
 import getSymmetricPositions from '../lib/getSymmetricPositions.ts';
 import updateUndoStack from '../lib/updateUndoStack.tsx';
 import { EditorState } from '../Types.tsx';
@@ -214,6 +217,7 @@ export default class DesignBehavior {
     const { map } = state;
     const unit = map.units.get(vector);
     const building = map.buildings.get(vector);
+    const maybeEntity = unit || building;
 
     setEditorState({
       ...editor,
@@ -231,7 +235,11 @@ export default class DesignBehavior {
               tile: map.getTileInfo(vector).id,
             },
     });
-    return null;
+
+    return maybeEntity &&
+      !map.matchesPlayer(map.getCurrentPlayer(), maybeEntity)
+      ? changePlayer(state.map, maybeEntity.player)
+      : null;
   }
 
   private draw(
@@ -242,16 +250,14 @@ export default class DesignBehavior {
   ): StateLike | null {
     let newState: StateLike | null = null;
     const players = PlayerIDs.filter((id) => id !== 0);
+    const currentPlayerId = state.map.getCurrentPlayer().id;
     vectors.forEach((vector, index) => {
-      const currentPlayerIndex = players.indexOf(
-        state.map.getCurrentPlayer().id,
-      );
+      const playerIndex =
+        currentPlayerId != 0 ? players.indexOf(currentPlayerId) : -1;
       const playerId =
-        players[
-          ((currentPlayerIndex >= 0 ? currentPlayerIndex : 0) + index) %
-            players.length
-        ];
-
+        playerIndex === -1
+          ? 0
+          : players[(playerIndex + index) % players.length];
       newState = {
         ...newState,
         ...this.put(
@@ -559,6 +565,10 @@ export default class DesignBehavior {
       unit =
         building && map.isOpponent(building, unit) ? unit : unit.stopCapture();
     }
+    const newUnits = ImmutableMap([
+      [vector, unit.removeLeader().setPlayer(playerId)],
+    ]);
+
     return canDeploy(
       map.copy({ units: units.delete(vector) }),
       unit.info,
@@ -569,8 +579,9 @@ export default class DesignBehavior {
           ...spawn(
             actions,
             state,
-            [[vector, unit.removeLeader().setPlayer(playerId)]],
-            null,
+            newUnits.toArray(),
+            maybeCreatePlayers(map, undefined, newUnits),
+            'slow',
             ({ map }) => {
               updateUndoStack(actions, editor, [
                 `design-unit-${encodeEntities(map.units)}`,
@@ -582,6 +593,7 @@ export default class DesignBehavior {
                 }),
               };
             },
+            true,
           ),
           map: map.copy({ units: map.units.delete(vector) }),
         }
@@ -616,9 +628,10 @@ export default class DesignBehavior {
 
     const tryToPlaceBuilding = (state: State): StateLike | null => {
       let { map } = state;
+      const newBuilding = building.setPlayer(playerId);
       map = map.copy({
         active: getActivePlayers(map),
-        buildings: map.buildings.set(vector, building.setPlayer(playerId)),
+        buildings: map.buildings.set(vector, newBuilding),
       });
 
       const { editorPlaceOn, placeOn } = building.info.configuration;
@@ -635,6 +648,17 @@ export default class DesignBehavior {
 
         if (!newState?.map) {
           return newState;
+        }
+
+        if (!map.maybeGetPlayer(playerId)) {
+          map = mergeTeams(
+            map,
+            maybeCreatePlayers(
+              map,
+              undefined,
+              ImmutableMap([[vector, newBuilding]]),
+            ),
+          );
         }
 
         map = map.copy({

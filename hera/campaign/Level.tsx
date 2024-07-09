@@ -5,10 +5,23 @@ import {
   AnimationConfig,
   TileSize,
 } from '@deities/athena/map/Configuration.tsx';
+import { PlayerID } from '@deities/athena/map/Player.tsx';
+import {
+  hasPerformanceExpectation,
+  PerformanceStyleComparators,
+  PerformanceStyleTypeShortName,
+} from '@deities/athena/map/PlayerPerformance.tsx';
+import { Reward } from '@deities/athena/map/Reward.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCondition, WinCriteria } from '@deities/athena/WinConditions.tsx';
+import {
+  Criteria,
+  Objective,
+  ObjectiveID,
+  Objectives,
+} from '@deities/athena/Objectives.tsx';
 import getFirst from '@deities/hephaestus/getFirst.tsx';
 import isPresent from '@deities/hephaestus/isPresent.tsx';
+import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import toPlainLevelList from '@deities/hermes/toPlainLevelList.tsx';
 import {
   ClientLevelID,
@@ -18,6 +31,7 @@ import {
 import Box from '@deities/ui/Box.tsx';
 import Button from '@deities/ui/Button.tsx';
 import { applyVar } from '@deities/ui/cssVar.tsx';
+import Dropdown from '@deities/ui/Dropdown.tsx';
 import useAlert from '@deities/ui/hooks/useAlert.tsx';
 import Icon from '@deities/ui/Icon.tsx';
 import InlineLink from '@deities/ui/InlineLink.tsx';
@@ -26,12 +40,15 @@ import pixelBorder from '@deities/ui/pixelBorder.tsx';
 import Stack from '@deities/ui/Stack.tsx';
 import TagList from '@deities/ui/TagList.tsx';
 import Typeahead, { TypeaheadDataSource } from '@deities/ui/Typeahead.tsx';
-import { css, cx } from '@emotion/css';
+import { css } from '@emotion/css';
 import ArrowLeftBox from '@iconify-icons/pixelarticons/arrow-left-box.js';
 import Close from '@iconify-icons/pixelarticons/close.js';
 import Edit from '@iconify-icons/pixelarticons/edit.js';
 import DialogueIcon from '@iconify-icons/pixelarticons/message-text.js';
 import EmptyDialogueIcon from '@iconify-icons/pixelarticons/message.js';
+import Pace from '@iconify-icons/pixelarticons/speed-fast.js';
+import Subscriptions from '@iconify-icons/pixelarticons/subscriptions.js';
+import Zap from '@iconify-icons/pixelarticons/zap.js';
 import { fbt } from 'fbt';
 import { useInView } from 'framer-motion';
 import { memo, MouseEvent, useCallback, useRef, useState } from 'react';
@@ -41,7 +58,8 @@ import EffectSelector from '../editor/selectors/EffectSelector.tsx';
 import useEffects from '../hooks/useEffects.tsx';
 import useMapData from '../hooks/useMapData.tsx';
 import MapComponent from '../Map.tsx';
-import WinConditionTitle from '../win-conditions/WinConditionTitle.tsx';
+import ObjectiveTitle from '../objectives/ObjectiveTitle.tsx';
+import { SkillIcon } from '../ui/SkillDialog.tsx';
 import useEffectCharacters from './hooks/useEffectCharacters.tsx';
 import sortByDepth from './lib/sortByDepth.tsx';
 import {
@@ -55,9 +73,9 @@ export default memo(function Level({
   depthMap,
   grandParentLevel,
   level,
+  objectiveId,
+  objectives,
   parentLevel,
-  winConditionIndex,
-  winConditions,
   ...commonProps
 }: {
   dataSource: TypeaheadDataSource<MapNode>;
@@ -66,6 +84,8 @@ export default memo(function Level({
   grandParentLevel?: LevelT<ClientLevelID>;
   level: LevelT<ClientLevelID>;
   maps: ReadonlyMap<ClientLevelID, MapNode>;
+  objectiveId?: ObjectiveID;
+  objectives?: Objectives;
   parentLevel?: LevelT<ClientLevelID>;
   renderEntities?: boolean;
   replaceFirstLevel: (mapId: ClientLevelID) => void;
@@ -75,8 +95,6 @@ export default memo(function Level({
     level: PlainLevel<ClientLevelID> | ReadonlyArray<PlainLevel<ClientLevelID>>,
     newMap?: MapNode,
   ) => void;
-  winConditionIndex?: number;
-  winConditions?: ReadonlyArray<WinCondition>;
   zoom?: number;
 }) {
   const {
@@ -93,8 +111,7 @@ export default memo(function Level({
   const ref = useRef(null);
   const isInView = useInView(ref);
 
-  const condition =
-    winConditionIndex != null && winConditions?.[winConditionIndex];
+  const objective = objectiveId != null && objectives?.get(objectiveId);
   const node = maps.get(level.mapId);
   const { alert } = useAlert();
   const map = useMapData(node?.state);
@@ -108,8 +125,8 @@ export default memo(function Level({
     trigger: 'Start',
   });
 
-  const updateWinCondition = useCallback(
-    (index: number | null) => {
+  const updateObjective = useCallback(
+    (objectiveId: ObjectiveID | null) => {
       if (parentLevel) {
         updateLevel({
           ...parentLevel,
@@ -118,7 +135,7 @@ export default memo(function Level({
             const { mapId } = isArray ? entry[1] : entry;
             // Only mutate if the level id matches.
             if (mapId === level.mapId) {
-              return index != null ? [index, mapId] : mapId;
+              return objectiveId != null ? [objectiveId, mapId] : mapId;
             }
             return isArray ? [entry[0], mapId] : mapId;
           }),
@@ -154,6 +171,15 @@ export default memo(function Level({
     return null;
   }
 
+  const rewardObjectives = [
+    ...map.config.objectives
+      .filter(
+        (objective): objective is Objective & Readonly<{ reward: Reward }> =>
+          !!objective.reward,
+      )
+      .values(),
+  ];
+
   const next = level.next;
   return (
     <Stack alignCenter nowrap start>
@@ -165,57 +191,52 @@ export default memo(function Level({
           nowrap
           ref={ref}
         >
-          <div className={selectorContainerStyle}>
-            {condition && winConditionIndex != null ? (
-              <WinConditionTitle
-                condition={condition}
-                index={winConditionIndex}
-                short
-              />
-            ) : (
-              depth > 0 && (
-                <fbt desc="Short description for 'any win condition'">Win</fbt>
+          <Dropdown
+            dropdownClassName={objectiveSelectorStyle}
+            title={
+              objective && objectiveId != null ? (
+                <ObjectiveTitle id={objectiveId} objective={objective} short />
+              ) : (
+                depth > 0 && (
+                  <fbt desc="Short description for 'any objective'">Win</fbt>
+                )
               )
-            )}
-            <Stack
-              className={cx(selectorStyle, winConditionSelectorStyle)}
-              vertical
-            >
-              {parentLevel && (
-                <>
-                  <InlineLink
-                    className={winConditionSelectorItemStyle}
-                    onClick={() => updateWinCondition(null)}
-                    selectedText={
-                      winConditionIndex == null ||
-                      (condition && condition.type === WinCriteria.Default)
-                    }
-                  >
-                    <fbt desc="Long description for 'any win condition'">
-                      Win (in any way)
-                    </fbt>
-                  </InlineLink>
-                  {winConditions
-                    ?.map((condition, index) =>
-                      condition.type !== WinCriteria.Default ? (
+            }
+          >
+            {parentLevel && (
+              <>
+                <InlineLink
+                  className={objectiveSelectorItemStyle}
+                  onClick={() => updateObjective(null)}
+                  selectedText={
+                    objectiveId == null ||
+                    (objective && objective.type === Criteria.Default)
+                  }
+                >
+                  <fbt desc="Long description for 'any objective'">
+                    Win (in any way)
+                  </fbt>
+                </InlineLink>
+                {[
+                  ...(objectives
+                    ?.map((objective, id) =>
+                      objective.type !== Criteria.Default ? (
                         <InlineLink
-                          className={winConditionSelectorItemStyle}
-                          key={index}
-                          onClick={() => updateWinCondition(index)}
-                          selectedText={index === winConditionIndex}
+                          className={objectiveSelectorItemStyle}
+                          key={id}
+                          onClick={() => updateObjective(id)}
+                          selectedText={id === objectiveId}
                         >
-                          <WinConditionTitle
-                            condition={condition}
-                            index={index}
-                          />
+                          <ObjectiveTitle id={id} objective={objective} />
                         </InlineLink>
                       ) : null,
                     )
-                    .filter(isPresent)}
-                </>
-              )}
-            </Stack>
-          </div>
+                    .filter(isPresent)
+                    .values() || []),
+                ]}
+              </>
+            )}
+          </Dropdown>
           <Stack gap vertical>
             <Stack>
               <h2>{node.name}</h2>
@@ -296,57 +317,107 @@ export default memo(function Level({
               slug={node.slug}
               zoom={zoom}
             />
-            <Stack className={mapBottomStyle} gap={16}>
-              {characters.length ? (
-                <Stack
-                  className={cx(selectorContainerStyle, effectContainerStyle)}
-                  gap
-                  start
-                >
-                  {characters.map((action, index) => (
-                    <Portrait
-                      clip
-                      key={index}
-                      player={action.player}
-                      scale={0.5}
-                      unit={getUnitInfoOrThrow(action.unitId)}
-                      variant={action.variant}
-                    />
-                  ))}
-                  {isInView && effects && (
-                    <Stack
-                      className={cx(selectorStyle, effectPanelStyle)}
-                      gap
-                      nowrap
-                      padding
-                      vertical
-                    >
-                      <Stack alignCenter gap={16} nowrap>
-                        <EffectSelector
-                          effects={effects}
-                          scenario={scenario}
-                          setScenario={(scenario) => setScenario(scenario)}
-                          winConditions={map.config.winConditions}
-                        />
-                        <Button
-                          onClick={() => setMap(node.id, 'effects', scenario)}
-                        >
-                          <Icon className={iconActiveStyle} icon={Edit} />
-                        </Button>
-                      </Stack>
-                      {scenario.effect.actions.map((action, index) => (
-                        <ActionCard
-                          action={action}
-                          biome={map.config.biome}
-                          hasContentRestrictions={false}
-                          key={index}
-                          scrollRef={null}
-                          user={null}
-                        />
-                      ))}
+            <Stack className={mapDetailStyle} gap vertical>
+              {hasPerformanceExpectation(map) && (
+                <Stack alignCenter gap={16} start>
+                  {map.config.performance.pace != null && (
+                    <Stack gap start>
+                      <Icon icon={Pace} />
+                      <div>{map.config.performance.pace}</div>
+                    </Stack>
+                  )}
+                  {map.config.performance.power != null && (
+                    <Stack gap start>
+                      <Icon icon={Zap} />
+                      <div>{map.config.performance.power}</div>
+                    </Stack>
+                  )}
+                  {map.config.performance.style != null && (
+                    <Stack gap start>
+                      <Icon icon={Subscriptions} />
+                      <span>
+                        {
+                          PerformanceStyleTypeShortName[
+                            map.config.performance.style[0]
+                          ]
+                        }{' '}
+                        <span className={comparatorStyle}>
+                          {
+                            PerformanceStyleComparators[
+                              map.config.performance.style[0]
+                            ]
+                          }
+                        </span>{' '}
+                        {map.config.performance.style[1]}
+                      </span>
                     </Stack>
                   )}
                 </Stack>
+              )}
+              {rewardObjectives.length ? (
+                <Stack alignCenter gap start>
+                  {rewardObjectives.length === 1 ? (
+                    <fbt desc="Label for reward">Reward</fbt>
+                  ) : (
+                    <fbt desc="Label for rewards">Rewards</fbt>
+                  )}
+                  <Stack gap={16} start>
+                    {rewardObjectives.map((objective, index) => (
+                      <RewardDetail
+                        key={index}
+                        player={map.getFirstPlayerID()}
+                        reward={objective.reward}
+                      />
+                    ))}
+                  </Stack>
+                </Stack>
+              ) : null}
+              {characters.length ? (
+                <Dropdown
+                  className={effectContainerStyle}
+                  dropdownClassName={effectPanelStyle}
+                  shouldRenderControls={isInView && !!effects}
+                  title={
+                    <Stack gap start>
+                      {characters.map((action, index) => (
+                        <Portrait
+                          clip
+                          key={index}
+                          player={action.player}
+                          scale={0.5}
+                          unit={getUnitInfoOrThrow(action.unitId)}
+                          variant={action.variant}
+                        />
+                      ))}
+                    </Stack>
+                  }
+                >
+                  <Stack gap nowrap padding vertical>
+                    <Stack alignCenter gap={16} nowrap>
+                      <EffectSelector
+                        effects={effects}
+                        objectives={map.config.objectives}
+                        scenario={scenario}
+                        setScenario={(scenario) => setScenario(scenario)}
+                      />
+                      <Button
+                        onClick={() => setMap(node.id, 'effects', scenario)}
+                      >
+                        <Icon className={iconActiveStyle} icon={Edit} />
+                      </Button>
+                    </Stack>
+                    {scenario.effect.actions.map((action, index) => (
+                      <ActionCard
+                        action={action}
+                        biome={map.config.biome}
+                        hasContentRestrictions={false}
+                        key={index}
+                        scrollRef={null}
+                        user={null}
+                      />
+                    ))}
+                  </Stack>
+                </Dropdown>
               ) : null}
               <Typeahead
                 dataSource={dataSource}
@@ -390,13 +461,13 @@ export default memo(function Level({
                 depthMap={depthMap}
                 grandParentLevel={parentLevel}
                 key={(Array.isArray(entry) ? entry[1] : entry).mapId}
+                objectives={map.config.objectives}
                 parentLevel={level}
-                winConditions={map.config.winConditions}
                 {...commonProps}
                 {...(Array.isArray(entry)
                   ? {
                       level: entry[1],
-                      winConditionIndex: entry[0],
+                      objectiveId: entry[0],
                     }
                   : { level: entry })}
               />
@@ -452,12 +523,40 @@ const MiniMap = memo(function MiniMap({
   );
 });
 
+const RewardDetail = ({
+  player,
+  reward,
+}: {
+  player: PlayerID;
+  reward: Reward;
+}) => {
+  const { type: rewardType } = reward;
+  switch (rewardType) {
+    case 'Skill':
+      return <SkillIcon skill={reward.skill} />;
+    case 'UnitPortraits':
+      return (
+        <Portrait
+          clip
+          player={player}
+          scale={0.5}
+          unit={reward.unit}
+          variant={0}
+        />
+      );
+    default: {
+      rewardType satisfies never;
+      throw new UnknownTypeError('Level::Reward', rewardType);
+    }
+  }
+};
+
 const mapCardStyle = css`
   min-width: 240px;
 `;
 
-const mapBottomStyle = css`
-  margin-top: 8px;
+const mapDetailStyle = css`
+  padding-top: 8px;
 `;
 
 const arrowStyle = css`
@@ -468,49 +567,24 @@ const tagListStyle = css`
   margin: 0 0 12px;
 `;
 
-const selectorContainerStyle = css`
-  cursor: pointer;
-  position: relative;
-
-  & > div {
-    transition-delay: 150ms;
-  }
-  &:hover > div {
-    opacity: 1;
-    pointer-events: auto;
-    transform: scale(1);
-    transition-delay: 0;
-  }
-`;
-
 const effectContainerStyle = css`
   & > div {
     transition-delay: 250ms;
   }
 `;
 
-const selectorStyle = css`
+const objectiveSelectorStyle = css`
   ${pixelBorder(applyVar('background-color-light'))}
+
+  backdrop-filter: blur(2px);
   background: ${applyVar('background-color-light')};
-
-  cursor: initial;
-  opacity: 0;
-  pointer-events: none;
-  position: absolute;
-  transform: scale(0.9);
-  transition:
-    opacity 150ms ease,
-    transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 102;
-`;
-
-const winConditionSelectorStyle = css`
   left: -4px;
   overflow-y: auto;
   top: -4px;
+  z-index: 102;
 `;
 
-const winConditionSelectorItemStyle = css`
+const objectiveSelectorItemStyle = css`
   margin: 4px;
   white-space: nowrap;
 `;
@@ -523,8 +597,8 @@ const effectPanelStyle = css`
   max-height: min(480px, 90vh);
   overflow: scroll;
   overscroll-behavior: contain;
-  position: absolute;
   top: -${TileSize * 6}px;
+  z-index: 102;
 `;
 
 const miniMapStyle = css`
@@ -542,4 +616,11 @@ const iconStyle = css`
 
 const dialogueIconStyle = css`
   margin-top: 1px;
+`;
+
+const comparatorStyle = css`
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 200;
+  text-align: center;
+  width: 16px;
 `;

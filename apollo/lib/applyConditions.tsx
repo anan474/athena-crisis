@@ -2,7 +2,7 @@ import { PlayerID } from '@deities/athena/map/Player.tsx';
 import MapData from '@deities/athena/MapData.tsx';
 import { ActionResponse } from '../ActionResponse.tsx';
 import { applyEffects, Effects } from '../Effects.tsx';
-import { checkGameOverConditions } from '../GameOver.tsx';
+import { applyObjectives } from '../Objective.tsx';
 import { GameState, GameStateWithEffects } from '../Types.tsx';
 
 const getLosingPlayer = (gameState: GameState): PlayerID | null => {
@@ -68,7 +68,7 @@ export default function applyConditions(
       addToGameState = false;
 
       // Reapply the same effects on a previous version of the game state in which the player has lost but
-      // lose criteria (ie. building posession) has not been updated yet.
+      // lose criteria (ie. building ownership) has not been updated yet.
       effectGameState = applyEffects(
         previousMap,
         previousMap,
@@ -84,15 +84,15 @@ export default function applyConditions(
       ];
     }
 
-    const gameOverState = checkGameOverConditions(
+    const objectiveState = applyObjectives(
       previousMap,
       activeMap,
       lastActionResponse,
     );
 
-    if (gameOverState?.length) {
+    if (objectiveState?.length) {
       let currentMap = activeMap;
-      for (const [actionResponse, currentActiveMap] of gameOverState) {
+      for (const [actionResponse, currentActiveMap] of objectiveState) {
         queue.push([currentMap, currentActiveMap, actionResponse, true]);
         currentMap = currentActiveMap;
       }

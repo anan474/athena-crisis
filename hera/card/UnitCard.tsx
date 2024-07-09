@@ -46,6 +46,7 @@ import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import clipBorder from '@deities/ui/clipBorder.tsx';
 import { applyVar } from '@deities/ui/cssVar.tsx';
 import getColor from '@deities/ui/getColor.tsx';
+import useLocation from '@deities/ui/hooks/useLocation.tsx';
 import Icon, { SVGIcon } from '@deities/ui/Icon.tsx';
 import Ammo from '@deities/ui/icons/Ammo.tsx';
 import DropUnit from '@deities/ui/icons/DropUnit.tsx';
@@ -221,20 +222,19 @@ const supplyRange = getAttributeRange(
 );
 
 export default memo(function UnitCard({
-  biome,
   factionNames,
   map,
   unit,
   vector,
   viewer,
 }: {
-  biome: Biome;
   factionNames: FactionNames;
   map: MapData;
   unit: Unit;
   vector: Vector;
   viewer?: PlayerID | null;
 }) {
+  const { biome } = map.config;
   const { info, player } = unit;
   const {
     configuration: { fuel, vision },
@@ -246,6 +246,11 @@ export default memo(function UnitCard({
     let entity = info.create(player);
     if (info.hasAbility(Ability.Unfold)) {
       entity = entity[type === 'attack' ? 'unfold' : 'fold']();
+    }
+    if (unit.isTransportingUnits()) {
+      entity = entity.copy({
+        transports: unit.transports,
+      });
     }
     return [
       entity,
@@ -259,7 +264,7 @@ export default memo(function UnitCard({
         }).copy({ units: ImmutableMap([[defaultVector, entity]]) }),
       ),
     ];
-  }, [biome, info, player, type]);
+  }, [info, biome, player, type, unit]);
 
   useEffect(() => {
     if (unit.player > 0) {
@@ -308,22 +313,24 @@ export default memo(function UnitCard({
           <CardTitle player={player}>{info.name}</CardTitle>
           {getTranslatedEntityName(info.type)},{' '}
           {getTranslatedEntityGroupName(getEntityGroup(entity))}
-          <div>
-            <fbt desc="Unit character name">
-              Name:{' '}
-              <fbt:param name="name">
-                <Stack
-                  center
-                  inline
-                  start
-                  style={isLeader ? { color } : undefined}
-                >
-                  {name}
-                  {isLeader && <Icon icon={Magic} />}
-                </Stack>
-              </fbt:param>
-            </fbt>
-          </div>
+          {player != 0 && (
+            <div>
+              <fbt desc="Unit character name">
+                Name:{' '}
+                <fbt:param name="name">
+                  <Stack
+                    center
+                    inline
+                    start
+                    style={isLeader ? { color } : undefined}
+                  >
+                    {name}
+                    {isLeader && <Icon icon={Magic} />}
+                  </Stack>
+                </fbt:param>
+              </fbt>
+            </div>
+          )}
         </Stack>
       </Stack>
       <Stack gap={16} vertical>
@@ -470,6 +477,7 @@ const Weapon = memo(function WeaponAttack({
   vector: Vector;
   weapon: WeaponT;
 }) {
+  const backURL = useLocation().pathname;
   const tile = map.getTileInfo(vector);
   const opponent = resolveDynamicPlayerID(map, 'opponent', player);
   const allSkills = useMemo(
@@ -570,7 +578,7 @@ const Weapon = memo(function WeaponAttack({
 
             return unitGroups.length ? (
               <TileBox key={strength}>
-                {strength === 1 ? (
+                {strength <= 1 ? (
                   <fbt desc="Label for attack strength">Weak</fbt>
                 ) : strength === 2 ? (
                   <fbt desc="Label for attack strength">Marginal</fbt>
@@ -601,7 +609,7 @@ const Weapon = memo(function WeaponAttack({
               Note: Cover, status effects and unit defense affect the inflicted
               damage. See the{' '}
               <fbt:param name="link">
-                <InlineLink to="/damage-chart">
+                <InlineLink to={`/damage-chart?back=${backURL}`}>
                   <fbt desc="Damage chart link name">Damage Chart</fbt>
                 </InlineLink>
               </fbt:param>{' '}
@@ -857,29 +865,31 @@ const UnitMovement = memo(function UnitMovement({
   return (
     <Stack gap vertical>
       <CardInfoHeading style={{ color: getColor(player) }}>
-        <fbt desc="Headline for movement information">
-          Movement:{' '}
-          <fbt:param name="movement-type">{movementType.name}</fbt:param>
-        </fbt>
+        <fbt desc="Headline for movement costs">Movement Costs</fbt>
       </CardInfoHeading>
-      <Stack gap start>
-        {tileList?.map(([cost, tiles]) => (
-          <MovementBox
-            biome={biome}
-            cost={cost}
-            key={cost}
-            size={
-              tiles.some((tile) => tileFieldHasDecorator(tile.id, biome))
-                ? 'medium'
-                : undefined
-            }
-            tiles={tiles}
-          />
-        )) || (
-          <fbt desc="Text for no movement restriction">
-            No movement restrictions.
-          </fbt>
-        )}
+      <Stack gap={16} vertical>
+        <fbt desc="Label for movement type">
+          Type: <fbt:param name="movementType">{movementType.name}</fbt:param>
+        </fbt>
+        <Stack gap start>
+          {tileList?.map(([cost, tiles]) => (
+            <MovementBox
+              biome={biome}
+              cost={cost}
+              key={cost}
+              size={
+                tiles.some((tile) => tileFieldHasDecorator(tile.id, biome))
+                  ? 'medium'
+                  : undefined
+              }
+              tiles={tiles}
+            />
+          )) || (
+            <fbt desc="Text for no movement restriction">
+              No movement restrictions.
+            </fbt>
+          )}
+        </Stack>
       </Stack>
     </Stack>
   );

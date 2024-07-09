@@ -2,6 +2,10 @@
 import { writeFileSync } from 'node:fs';
 import { basename, extname, join, posix, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  GameEndCondition,
+  OptionalObjectiveCondition,
+} from '@deities/apollo/Condition.tsx';
 import getMessageKey from '@deities/apollo/lib/getMessageKey.tsx';
 import { mapBuildings } from '@deities/athena/info/Building.tsx';
 import { mapDecorators } from '@deities/athena/info/Decorator.tsx';
@@ -32,6 +36,7 @@ type EntityDescription = Readonly<{
 }>;
 
 const root = process.cwd();
+const isOpenSourceRepository = isOpenSource();
 const publishedCampaigns = new Map([
   ['proto-campaign', Number.POSITIVE_INFINITY],
   ['the-athena-crisis', Number.POSITIVE_INFINITY],
@@ -61,6 +66,7 @@ const maps = await Promise.all(
       ),
   ),
 );
+
 const mapsById = new Map(maps.map(({ id, module }) => [id, module]));
 
 const campaigns = await Promise.all(
@@ -76,7 +82,14 @@ const campaigns = await Promise.all(
     ),
 );
 
-const campaignMaps = isOpenSource()
+const campaignMetadata: Array<string> = [];
+if (isOpenSourceRepository) {
+  campaignMetadata.push(
+    `'placeholder-campaign': () => String(fbt(\`placeholder-campaign\`, ${JSON.stringify(`Translation for campaign name 'placeholder-campaign'.`)})),`,
+  );
+}
+
+const campaignMaps = isOpenSourceRepository
   ? maps.map((map) => ({
       campaignName: 'placeholder-campaign',
       map: map.module,
@@ -84,6 +97,16 @@ const campaignMaps = isOpenSource()
   : campaigns
       .filter(({ id }) => publishedCampaigns.has(id))
       .flatMap(({ id, module }) => {
+        const { description, name } = module.default;
+        campaignMetadata.push(
+          `${JSON.stringify(name)}: () => String(fbt(\`${name}\`, ${JSON.stringify(`Translation for campaign name '${name}'.`)})),`,
+        );
+        if (description) {
+          campaignMetadata.push(
+            `${JSON.stringify(description)}: () => String(fbt(\`${description}\`, ${JSON.stringify(`Description for campaign '${name}'.`)})),`,
+          );
+        }
+
         const publishedLevels = publishedCampaigns.get(id)!;
         const maps = [];
         for (const [level] of unrollCampaign(module.default)) {
@@ -104,7 +127,11 @@ const campaignMaps = isOpenSource()
             publishedLevels === Number.POSITIVE_INFINITY ||
             (mapNumber && mapNumber > 0 && mapNumber <= publishedLevels)
           ) {
-            maps.push({ campaignName: module.default.name, map });
+            maps.push({
+              campaignName:
+                name === 'Prequel Campaign' ? 'Proto Campaign' : name,
+              map,
+            });
           }
         }
         return maps;
@@ -130,10 +157,14 @@ const characterMessages = campaignMaps.flatMap(
     }> = [];
     for (const [trigger, effectList] of effects) {
       for (const effect of effectList) {
-        const gameEnd = effect.conditions?.find(
-          (condition) => condition.type === 'GameEnd',
+        const condition = effect.conditions?.find(
+          (
+            condition,
+          ): condition is GameEndCondition | OptionalObjectiveCondition =>
+            condition.type === 'GameEnd' ||
+            condition.type === 'OptionalObjective',
         );
-        const winCondition = gameEnd?.type === 'GameEnd' ? gameEnd.value : null;
+        const objective = condition?.value ?? null;
         let count = 1;
         for (const action of effect.actions) {
           if (action.type === 'CharacterMessageEffect') {
@@ -141,7 +172,7 @@ const characterMessages = campaignMaps.flatMap(
               description: `Campaign ${campaignName}, Map${
                 mapNumber ? ` ${mapNumber}` : ''
               } "${name}", ${trigger}${
-                winCondition ? ` ${winCondition}` : ''
+                objective ? ` ${objective}` : ''
               }, #${count++}: Player ${action.player}, Character ${
                 getUnitInfoOrThrow(action.unitId).characterName
               }`,
@@ -356,6 +387,7 @@ writeFileSync(
       [
         `import { getUnitInfoOrThrow } from '@deities/athena/info/Unit.tsx';`,
         `import { fbt } from 'fbt';`,
+        `export const CampaignMetadata = {${campaignMetadata.join('\n')}};\n`,
         `export default {`,
         campaign.join('\n'),
         `}`,

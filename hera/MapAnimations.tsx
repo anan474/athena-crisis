@@ -14,7 +14,7 @@ import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import { BaseColor } from '@deities/ui/getColor.tsx';
 import ImmutableMap from '@nkzw/immutable-map';
 import { AnimatePresence } from 'framer-motion';
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ComponentType, ReactNode, useEffect, useMemo, useState } from 'react';
 import AttackAnimation from './animations/AttackAnimation.tsx';
 import BuildingCreate from './animations/BuildingCreate.tsx';
 import Explosion, { ExplosionStyle } from './animations/Explosion.tsx';
@@ -28,10 +28,12 @@ import Spawn from './animations/Spawn.tsx';
 import UpgradeAnimation from './animations/UpgradeAnimation.tsx';
 import {
   Actions,
+  ClearTimerFunction,
   FactionNames,
   GetLayerFunction,
   State,
   StateToStateLike,
+  TimerFunction,
 } from './Types.tsx';
 import Banner from './ui/Banner.tsx';
 import CharacterMessage from './ui/CharacterMessage.tsx';
@@ -41,6 +43,15 @@ import Message from './ui/Message.tsx';
 import Notice from './ui/Notice.tsx';
 
 type UnitDirection = 'left' | 'right';
+
+export type BaseAnimationProps = Readonly<{
+  animationConfig: AnimationConfig;
+  clearTimer: ClearTimerFunction;
+  onComplete: () => void;
+  rate: number;
+  scheduleTimer: TimerFunction;
+  zIndex: number;
+}>;
 
 export type ExplosionAnimation = Readonly<{
   direction?: AttackDirection;
@@ -55,6 +66,7 @@ export type SpawnAnimation = Readonly<{
   locked: false;
   onComplete: StateToStateLike;
   onSpawn?: StateToStateLike;
+  speed: 'fast' | 'slow';
   type: 'spawn';
   unitDirection: UnitDirection;
   variant: PlayerID;
@@ -198,8 +210,11 @@ export type FlashAnimation = Readonly<{
 
 export type BannerAnimation = Readonly<{
   color?: BaseColor | ReadonlyArray<BaseColor>;
+  component?: ComponentType<{ duration: number; isVisible: boolean }>;
+  direction?: 'up';
   length: 'short' | 'medium' | 'long';
   onComplete?: StateToStateLike;
+  padding?: 'small';
   player: PlayerID;
   sound: SoundName | null;
   style?: 'regular' | 'flashy';
@@ -398,7 +413,10 @@ const MapAnimation = ({
       case 'spawn':
         return (
           <Spawn
-            delay={animationConfig.ExplosionStep}
+            delay={
+              animationConfig.ExplosionStep /
+              (animation.speed === 'fast' ? 2 : 1)
+            }
             onSpawn={animation.onSpawn}
             position={position}
             requestFrame={requestFrame}
@@ -667,16 +685,15 @@ export function MapAnimations({
       size: { width },
     },
     tileSize,
+    userDisplayName,
     zIndex,
   },
-  userDisplayName,
 }: {
   actions: Actions;
   animationComplete: (position: Vector, animation: Animation) => void;
   getLayer: GetLayerFunction;
   skipBanners?: boolean;
   state: State;
-  userDisplayName: string;
 }) {
   const animationsWithTransitions: Array<JSX.Element> = [];
   const mainAnimations: Array<JSX.Element> = [];

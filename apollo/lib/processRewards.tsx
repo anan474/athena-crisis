@@ -1,33 +1,36 @@
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCriteria } from '@deities/athena/WinConditions.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
 import isPresent from '@deities/hephaestus/isPresent.tsx';
 import applyActionResponse from '../actions/applyActionResponse.tsx';
-import { GameEndActionResponse } from '../GameOver.tsx';
+import {
+  GameEndActionResponse,
+  OptionalObjectiveActionResponse,
+} from '../Objective.tsx';
 import { GameState, MutableGameState } from '../Types.tsx';
-import getWinningTeam from './getWinningTeam.tsx';
+import getMatchingTeam from './getMatchingTeam.tsx';
 
 export function processRewards(
   map: MapData,
-  gameEndResponse: GameEndActionResponse,
+  actionResponse: GameEndActionResponse | OptionalObjectiveActionResponse,
 ): [GameState, MapData] {
   const gameState: MutableGameState = [];
-  const winningTeam = getWinningTeam(map, gameEndResponse);
-  if (winningTeam !== 'draw') {
+  const team = getMatchingTeam(map, actionResponse);
+  if (team) {
     const rewards = new Set(
       [
-        'condition' in gameEndResponse
-          ? gameEndResponse.condition?.reward
+        actionResponse.objective?.reward,
+        actionResponse.type === 'GameEnd'
+          ? map.config.objectives.find(
+              (objective) => objective.type === Criteria.Default,
+            )?.reward
           : null,
-        map.config.winConditions.find(
-          (condition) => condition.type === WinCriteria.Default,
-        )?.reward,
       ].filter(isPresent),
     );
 
     if (rewards.size) {
       for (const reward of rewards) {
-        for (const [, player] of map.getTeam(winningTeam).players) {
-          if (!player.skills.has(reward.skill)) {
+        for (const [, player] of team.players) {
+          if (reward.type !== 'Skill' || !player.skills.has(reward.skill)) {
             const rewardActionResponse = {
               player: player.id,
               reward,
