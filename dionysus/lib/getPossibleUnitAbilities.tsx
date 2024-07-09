@@ -5,6 +5,7 @@ import Player from '@deities/athena/map/Player.tsx';
 export type PotentialUnitAbilities = Readonly<{
   canCreateBuildUnits: boolean;
   canCreateCaptureUnits: boolean;
+  canCreateHealingUnits: boolean;
   canCreateSupplyUnits: boolean;
   canCreateTransportUnits: boolean;
 }>;
@@ -24,6 +25,7 @@ export default function getPossibleUnitAbilities(
   unitInfos: ReadonlyArray<UnitInfo>,
 ) {
   let canCreateBuildUnits = false;
+  let canCreateHealingUnits = false;
   let canCreateCaptureUnits = false;
   let canCreateSupplyUnits = false;
   let canCreateTransportUnits = false;
@@ -33,6 +35,9 @@ export default function getPossibleUnitAbilities(
       canCreateCaptureUnits = true;
     }
 
+    if (unit.hasAbility(Ability.Heal)) {
+      canCreateHealingUnits = true;
+    }
     if (unit.hasAbility(Ability.CreateBuildings)) {
       canCreateBuildUnits = true;
     }
@@ -47,6 +52,7 @@ export default function getPossibleUnitAbilities(
 
     if (
       canCreateBuildUnits &&
+      canCreateHealingUnits &&
       canCreateCaptureUnits &&
       canCreateSupplyUnits &&
       canCreateTransportUnits
@@ -54,6 +60,7 @@ export default function getPossibleUnitAbilities(
       return {
         canCreateBuildUnits,
         canCreateCaptureUnits,
+        canCreateHealingUnits,
         canCreateSupplyUnits,
         canCreateTransportUnits,
       };
@@ -63,6 +70,7 @@ export default function getPossibleUnitAbilities(
   return {
     canCreateBuildUnits,
     canCreateCaptureUnits,
+    canCreateHealingUnits,
     canCreateSupplyUnits,
     canCreateTransportUnits,
   };
