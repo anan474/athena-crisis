@@ -30,14 +30,12 @@ import Player, {
   PlayerID,
   toPlayerID,
 } from '../map/Player.tsx';
+import { PerformanceStyleTypes } from '../map/PlayerPerformance.tsx';
 import Team, { toTeamArray } from '../map/Team.tsx';
 import Unit, { TransportedUnit } from '../map/Unit.tsx';
 import vec from '../map/vec.tsx';
 import MapData from '../MapData.tsx';
-import {
-  dropInactivePlayersFromWinConditions,
-  validateWinConditions,
-} from '../WinConditions.tsx';
+import { resetObjectives, validateObjectives } from '../Objectives.tsx';
 import canBuild from './canBuild.tsx';
 import canDeploy from './canDeploy.tsx';
 import canPlaceDecorator from './canPlaceDecorator.tsx';
@@ -53,11 +51,11 @@ export type ErrorReason =
   | 'invalid-decorators'
   | 'invalid-entities'
   | 'invalid-funds'
-  | 'invalid-map'
+  | 'invalid-tiles'
   | 'invalid-size'
   | 'invalid-teams'
   | 'invalid-tiles'
-  | 'invalid-win-conditions'
+  | 'invalid-objectives'
   | 'players';
 
 const validateMapConfig = (map: MapData) => {
@@ -67,6 +65,7 @@ const validateMapConfig = (map: MapData) => {
     blocklistedUnits,
     fog,
     multiplier,
+    performance,
     seedCapital,
   } = config;
   if (typeof fog !== 'boolean') {
@@ -93,6 +92,18 @@ const validateMapConfig = (map: MapData) => {
     if (!getUnitInfo(unitId)) {
       return false;
     }
+  }
+
+  const { pace, power, style } = performance;
+  if (
+    (pace != null && pace < 1) ||
+    (power != null && power < 0) ||
+    (style != null &&
+      (!PerformanceStyleTypes.includes(style[0]) ||
+        style[1] == null ||
+        style[1] < 0))
+  ) {
+    return false;
   }
 
   return true;
@@ -149,7 +160,7 @@ const addLeader = (
   }
 };
 
-const validateUnit = (
+export const validateUnit = (
   unit: Unit | TransportedUnit,
   leaders: Map<PlayerID, Set<number>>,
   player?: PlayerID,
@@ -228,7 +239,7 @@ export default function validateMap(
       const field = map.map[index];
       const modifierField = map.modifiers[index];
       if (typeof field === 'number' && typeof modifierField !== 'number') {
-        invalidReason = 'invalid-map';
+        invalidReason = 'invalid-tiles';
       }
 
       if (
@@ -238,7 +249,7 @@ export default function validateMap(
           field.length === 1 * 1 ||
           modifierField.length === 1 * 1)
       ) {
-        invalidReason = 'invalid-map';
+        invalidReason = 'invalid-tiles';
       }
     });
 
@@ -253,7 +264,7 @@ export default function validateMap(
     }
   } catch {
     // If the above iterators throw it means that one of the tiles is invalid.
-    return [null, 'invalid-map'];
+    return [null, 'invalid-tiles'];
   }
 
   map = withModifiers(
@@ -378,7 +389,7 @@ export default function validateMap(
 
   const teams = ImmutableMap(
     active.map((id) => {
-      const player = map.getPlayer(id);
+      const player = map.maybeGetPlayer(id);
       return [
         id,
         new Team(
@@ -390,10 +401,10 @@ export default function validateMap(
               toPlayerID(id),
               id,
               0,
-              player.ai != null && AIRegistry.has(player.ai)
+              player?.ai != null && AIRegistry.has(player.ai)
                 ? player.ai
                 : undefined,
-              player.skills,
+              player?.skills || new Set(),
             ),
           ),
         ),
@@ -405,10 +416,7 @@ export default function validateMap(
     active,
     buildings: map.buildings.map((entity) => entity.recover()),
     config: map.config.copy({
-      winConditions: dropInactivePlayersFromWinConditions(
-        map.config.winConditions,
-        new Set(active),
-      ),
+      objectives: resetObjectives(map.config.objectives, new Set(active)),
     }),
     currentPlayer: active[0],
     round: 1,
@@ -416,8 +424,8 @@ export default function validateMap(
     units: map.units.map((entity) => entity.recover()),
   });
 
-  if (!validateWinConditions(newMap)) {
-    return [null, 'invalid-win-conditions'];
+  if (!validateObjectives(newMap)) {
+    return [null, 'invalid-objectives'];
   }
 
   return validateTeams(newMap, newTeams || toTeamArray(map.teams));

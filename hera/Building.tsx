@@ -54,7 +54,7 @@ const BuildingTile = memo(function BuildingTile({
   zIndex?: number;
 }) {
   if (isVisible === false) {
-    building = building.hide(biome);
+    building = building.hide(biome, true);
   }
 
   const { x, y } = position;
@@ -142,7 +142,11 @@ const BuildingTile = memo(function BuildingTile({
           darkCompletedStyle,
         showHighlight && brightStyle,
         (maybeOutline || showHighlight) && maybeOutlineStyle,
-        outline && outlineStyle,
+        outline
+          ? biome === Biome.Volcano || biome === Biome.Luna
+            ? alternateOutlineStyle
+            : outlineStyle
+          : null,
         animation &&
           animation.type == 'attackBuildingFlash' &&
           attackFlashStyle,
@@ -185,18 +189,20 @@ const BuildingTile = memo(function BuildingTile({
   return building.label != null ? (
     <>
       {buildingTile}
-      <div
-        className={cx(baseStyle, absolute && absoluteStyle)}
-        style={{
-          [vars.set('x')]: `${positionX}px`,
-          [vars.set('y')]: `${positionY}px`,
-          height,
-          width: `${size}px`,
-          zIndex: zIndex ?? 0,
-        }}
-      >
-        <Label entity={building} hide={!!animation} />
-      </div>
+      {building.label !== null && (
+        <div
+          className={cx(baseStyle, absoluteStyle)}
+          style={{
+            [vars.set('x')]: `${positionX}px`,
+            [vars.set('y')]: `${positionY}px`,
+            height,
+            width: `${size}px`,
+            zIndex: zIndex ?? 0,
+          }}
+        >
+          <Label entity={building} hide={!!animation} />
+        </div>
+      )}
     </>
   ) : (
     buildingTile
@@ -281,6 +287,9 @@ const brightStyle = css`
 
 const outlineStyle = css`
   ${vars.set('drop-shadow-color', 'rgb(210, 18, 24)')}
+`;
+const alternateOutlineStyle = css`
+  ${vars.set('drop-shadow-color', 'rgb(255, 215, 0)')}
 `;
 
 const fadeStyle = css`

@@ -1,8 +1,8 @@
 import { Scenario } from '@deities/apollo/Effects.tsx';
+import { PlayStyle } from '@deities/hermes/PlayStyle.tsx';
 import { ClientLevelID } from '@deities/hermes/Types.tsx';
 import { BaseMapEditorProps } from '../editor/MapEditor.tsx';
 import { EditorMode } from '../editor/Types.tsx';
-import { PlayStyleType } from './lib/PlayStyle.tsx';
 
 type CampaignEditorMode = 'settings';
 
@@ -17,7 +17,7 @@ export type MapNode = Readonly<{
 
 export type MapEditorContainerProps = BaseMapEditorProps &
   Readonly<{
-    onCreate?: (map: MapNode) => void;
+    onCreate?: (map: MapNode & { local: boolean }) => void;
     onUpdate?: (map: MapNode) => void;
   }>;
 
@@ -40,7 +40,7 @@ export type CampaignObject = Readonly<{
   levels: string;
   name: string;
   next: ClientLevelID;
-  playStyle: PlayStyleType | null | undefined;
+  playStyle: PlayStyle | null | undefined;
   tags: ReadonlyArray<string>;
 }>;
 

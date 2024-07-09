@@ -13,12 +13,14 @@ import { useCallback, useEffect, useState } from 'react';
 const viewer = {
   access: 'User',
   character: {
+    color: 1,
     unitId: Sniper.id,
     variant: 0,
   },
   displayName: 'Maxima',
   factionName: 'Atlas',
   id: 'Demo-User-12',
+  skillSlots: 1,
   skills: [],
   username: 'demo-maxima',
 } as const;
@@ -35,6 +37,7 @@ const decodeMapObject = (data: string | null): MapObject | null => {
       campaigns: {
         edges: [],
       },
+      canEdit: true,
       creator: maybeCreator
         ? {
             displayName:
@@ -84,6 +87,7 @@ export default function MapEditorExample() {
         campaigns: {
           edges: [],
         },
+        canEdit: true,
         creator: {
           displayName: viewer.displayName,
           id: viewer.id,

@@ -8,7 +8,8 @@ import withModifiers from '@deities/athena/lib/withModifiers.tsx';
 import { HumanPlayer } from '@deities/athena/map/Player.tsx';
 import vec from '@deities/athena/map/vec.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCriteria } from '@deities/athena/WinConditions.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
+import ImmutableMap from '@nkzw/immutable-map';
 import { expect, test } from 'vitest';
 import executeGameActions from '../executeGameActions.tsx';
 import snapshotGameState from '../snapshotGameState.tsx';
@@ -36,25 +37,31 @@ const player1 = HumanPlayer.from(map.getPlayer(1), '1');
 test(`inserts 'ReceiveReward' action responses just before 'GameEnd'`, () => {
   const vecA = vec(1, 1);
   const vecB = vec(3, 3);
-  const captureCondition = {
-    amount: 1,
-    hidden: false,
-    reward: {
-      skill: Skill.BuyUnitCannon,
-      type: 'skill',
-    },
-    type: WinCriteria.CaptureAmount,
-  } as const;
   const currentMap = map.copy({
     buildings: map.buildings.set(vecA, Barracks.create(2)),
     config: map.config.copy({
-      winConditions: [
-        {
-          hidden: false,
-          type: WinCriteria.Default,
-        },
-        captureCondition,
-      ],
+      objectives: ImmutableMap([
+        [
+          0,
+          {
+            hidden: false,
+            type: Criteria.Default,
+          },
+        ],
+        [
+          1,
+          {
+            amount: 1,
+            hidden: false,
+            optional: false,
+            reward: {
+              skill: Skill.BuyUnitCannon,
+              type: 'Skill',
+            },
+            type: Criteria.CaptureAmount,
+          },
+        ],
+      ]),
     }),
     units: map.units
       .set(vecA, Pioneer.create(player1).capture())
@@ -113,8 +120,8 @@ test(`inserts 'ReceiveReward' action responses just before 'GameEnd'`, () => {
     "SetViewer
     CharacterMessage { message: 'Yay', player: 'self', unitId: 5, variant: 1 }
     Capture (1,1) { building: Barracks { id: 12, health: 100, player: 1 }, player: 2 }
-    ReceiveReward { player: 1, reward: 'Reward { skill: 4 }' }
-    GameEnd { condition: { amount: 1, hidden: false, reward: { skill: 4, type: 'skill' }, type: 2 }, conditionId: 1, toPlayer: 1 }"
+    ReceiveReward { player: 1, reward: 'Reward { skill: 4 }', permanent: null }
+    GameEnd { objective: { amount: 1, hidden: false, optional: false, reward: { skill: 4, type: 'Skill' }, type: 2 }, objectiveId: 1, toPlayer: 1 }"
   `);
 });
 
@@ -123,25 +130,31 @@ test(`each skill is only received once`, () => {
   const vecB = vec(3, 3);
   const reward = {
     skill: Skill.BuyUnitCannon,
-    type: 'skill',
-  } as const;
-  const captureCondition = {
-    amount: 1,
-    hidden: false,
-    reward,
-    type: WinCriteria.CaptureAmount,
+    type: 'Skill',
   } as const;
   const currentMap = map.copy({
     buildings: map.buildings.set(vecA, Barracks.create(2)),
     config: map.config.copy({
-      winConditions: [
-        {
-          hidden: false,
-          reward,
-          type: WinCriteria.Default,
-        },
-        captureCondition,
-      ],
+      objectives: ImmutableMap([
+        [
+          0,
+          {
+            hidden: false,
+            reward,
+            type: Criteria.Default,
+          },
+        ],
+        [
+          1,
+          {
+            amount: 1,
+            hidden: false,
+            optional: false,
+            reward,
+            type: Criteria.CaptureAmount,
+          },
+        ],
+      ]),
     }),
     units: map.units
       .set(vecA, Pioneer.create(player1).capture())
@@ -200,8 +213,8 @@ test(`each skill is only received once`, () => {
     "SetViewer
     CharacterMessage { message: 'Yay', player: 'self', unitId: 5, variant: 1 }
     Capture (1,1) { building: Barracks { id: 12, health: 100, player: 1 }, player: 2 }
-    ReceiveReward { player: 1, reward: 'Reward { skill: 4 }' }
-    GameEnd { condition: { amount: 1, hidden: false, reward: { skill: 4, type: 'skill' }, type: 2 }, conditionId: 1, toPlayer: 1 }"
+    ReceiveReward { player: 1, reward: 'Reward { skill: 4 }', permanent: null }
+    GameEnd { objective: { amount: 1, hidden: false, optional: false, reward: { skill: 4, type: 'Skill' }, type: 2 }, objectiveId: 1, toPlayer: 1 }"
   `);
 });
 
@@ -210,7 +223,7 @@ test('receiving skill rewards during a game will add them to the player', async 
     player: 1,
     reward: {
       skill: Skill.BuyUnitCannon,
-      type: 'skill',
+      type: 'Skill',
     },
     type: 'ReceiveReward',
   } as const);

@@ -20,7 +20,7 @@ import { AIBehavior } from '@deities/athena/map/AIBehavior.tsx';
 import { HumanPlayer } from '@deities/athena/map/Player.tsx';
 import vec from '@deities/athena/map/vec.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCriteria } from '@deities/athena/WinConditions.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
 import ImmutableMap from '@nkzw/immutable-map';
 import { expect, test } from 'vitest';
 import executeGameActions from '../executeGameActions.tsx';
@@ -253,7 +253,7 @@ test('creates a second unit every time a Flamethrower is created', async () => {
       "CreateUnit (1,1 → 2,1) { unit: Flamethrower { id: 15, health: 100, player: 1, fuel: 30, ammo: [ [ 1, 4 ] ], moved: true, name: 'Yuki', completed: true }, free: false, skipBehaviorRotation: false }
       CreateUnit (1,1 → 1,1) { unit: Flamethrower { id: 15, health: 100, player: 1, fuel: 30, ammo: [ [ 1, 4 ] ], moved: true, name: 'Blair', completed: true }, free: true, skipBehaviorRotation: false }
       CreateUnit (2,3 → 2,3) { unit: Pioneer { id: 1, health: 100, player: 1, fuel: 40, moved: true, name: 'Sam', completed: true }, free: false, skipBehaviorRotation: false }
-      CreateUnit (1,3 → 1,3) { unit: Flamethrower { id: 15, health: 100, player: 1, fuel: 30, ammo: [ [ 1, 4 ] ], moved: true, name: 'Lee', completed: true }, free: false, skipBehaviorRotation: false }
+      CreateUnit (1,3 → 1,3) { unit: Flamethrower { id: 15, health: 100, player: 1, fuel: 30, ammo: [ [ 1, 4 ] ], moved: true, name: 'Riley', completed: true }, free: false, skipBehaviorRotation: false }
       CreateUnit (1,3 → 1,2) { unit: Flamethrower { id: 15, health: 100, player: 1, fuel: 30, ammo: [ [ 1, 4 ] ], moved: true, name: 'Cameron', completed: true }, free: true, skipBehaviorRotation: false }
       EndTurn { current: { funds: 9100, player: 1 }, next: { funds: 500, player: 2 }, round: 1, rotatePlayers: false, supply: null, miss: false }
       EndTurn { current: { funds: 500, player: 2 }, next: { funds: 9100, player: 1 }, round: 2, rotatePlayers: false, supply: null, miss: false }"
@@ -299,10 +299,56 @@ test('spawns an additional unit', async () => {
   expect(snapshotEncodedActionResponse(gameActionResponse))
     .toMatchInlineSnapshot(`
       "EndTurn { current: { funds: 10000, player: 1 }, next: { funds: 500, player: 2 }, round: 1, rotatePlayers: false, supply: null, miss: false }
-      Spawn { units: [3,3 → Flamethrower { id: 15, health: 100, player: 2, fuel: 30, ammo: [ [ 1, 4 ] ] }], teams: null }
+      Spawn { units: [3,3 → Flamethrower { id: 15, health: 100, player: 2, fuel: 30, ammo: [ [ 1, 4 ] ], name: 'Yuki' }], teams: null }
       Move (3,3 → 2,1) { fuel: 27, completed: false, path: [3,2 → 2,2 → 2,1] }
       AttackUnit (2,1 → 1,1) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 3 ] ] }, unitB: null, chargeA: 33, chargeB: 100 }
       CompleteUnit (1,3)
+      EndTurn { current: { funds: 500, player: 2 }, next: { funds: 10000, player: 1 }, round: 2, rotatePlayers: false, supply: null, miss: false }"
+    `);
+});
+
+test('spawns a neutral unit', async () => {
+  const vecA = vec(1, 1);
+  const vecB = vec(1, 2);
+  const vecC = vec(3, 3);
+  const vecD = vec(1, 3);
+  const initialMap = map.copy({
+    units: map.units
+      .set(vecA, Pioneer.create(1))
+      .set(vecB, Pioneer.create(1))
+      .set(vecD, Pioneer.create(2)),
+  });
+
+  const effects: Effects = new Map([
+    [
+      'EndTurn',
+      new Set<Effect>([
+        {
+          actions: [
+            {
+              player: 0,
+              type: 'SpawnEffect',
+              units: ImmutableMap([[vecC, Flamethrower.create(0)]]),
+            },
+          ],
+          occurrence: 'once',
+        },
+      ]),
+    ],
+  ]);
+
+  const [, gameActionResponse] = executeGameActions(
+    initialMap,
+    [EndTurnAction()],
+    effects,
+  );
+
+  expect(snapshotEncodedActionResponse(gameActionResponse))
+    .toMatchInlineSnapshot(`
+      "EndTurn { current: { funds: 10000, player: 1 }, next: { funds: 500, player: 2 }, round: 1, rotatePlayers: false, supply: null, miss: false }
+      Spawn { units: [3,3 → Flamethrower { id: 15, health: 100, player: 0, fuel: 30, ammo: [ [ 1, 4 ] ], name: 'Casey' }], teams: null }
+      Move (1,3 → 2,3) { fuel: 39, completed: false, path: [2,3] }
+      Rescue (2,3 → 3,3) { player: 2, name: null }
       EndTurn { current: { funds: 500, player: 2 }, next: { funds: 10000, player: 1 }, round: 2, rotatePlayers: false, supply: null, miss: false }"
     `);
 });
@@ -374,7 +420,7 @@ test('effects work for game start and end', async () => {
       AttackUnitGameOver { fromPlayer: 2, toPlayer: 1 }
       SetViewer
       CharacterMessage { message: 'I win again!', player: 'self', unitId: 5, variant: 1 }
-      GameEnd { condition: null, conditionId: null, toPlayer: 1 }"
+      GameEnd { objective: null, objectiveId: null, toPlayer: 1 }"
     `);
 
   expect(newEffects?.get('Start')).toMatchInlineSnapshot(`
@@ -484,7 +530,7 @@ test('effects work when a player loses', () => {
       AttackUnitGameOver { fromPlayer: 1, toPlayer: 2 }
       SetViewer
       CharacterMessage { message: 'Oh no.', player: 'self', unitId: 5, variant: 2 }
-      GameEnd { condition: null, conditionId: null, toPlayer: 2 }"
+      GameEnd { objective: null, objectiveId: null, toPlayer: 2 }"
     `);
 });
 
@@ -494,17 +540,24 @@ test('only one game end win effect is fired', () => {
   const initialMap = map.copy({
     buildings: map.buildings.set(vecA, Barracks.create(2)),
     config: map.config.copy({
-      winConditions: [
-        {
-          hidden: false,
-          type: WinCriteria.Default,
-        },
-        {
-          amount: 1,
-          hidden: false,
-          type: WinCriteria.CaptureAmount,
-        },
-      ],
+      objectives: ImmutableMap([
+        [
+          0,
+          {
+            hidden: false,
+            type: Criteria.Default,
+          },
+        ],
+        [
+          1,
+          {
+            amount: 1,
+            hidden: false,
+            optional: false,
+            type: Criteria.CaptureAmount,
+          },
+        ],
+      ]),
     }),
     units: map.units
       .set(vecA, Pioneer.create(player1).capture())
@@ -561,11 +614,11 @@ test('only one game end win effect is fired', () => {
 
   expect(snapshotEncodedActionResponse(gameActionResponse))
     .toMatchInlineSnapshot(`
-    "Capture (1,1) { building: Barracks { id: 12, health: 100, player: 1 }, player: 2 }
-    SetViewer
-    CharacterMessage { message: 'Yay', player: 'self', unitId: 5, variant: 1 }
-    GameEnd { condition: { amount: 1, hidden: false, players: [], reward: null, type: 2 }, conditionId: 1, toPlayer: 1 }"
-  `);
+      "Capture (1,1) { building: Barracks { id: 12, health: 100, player: 1 }, player: 2 }
+      SetViewer
+      CharacterMessage { message: 'Yay', player: 'self', unitId: 5, variant: 1 }
+      GameEnd { objective: { amount: 1, completed: Set(0) {}, hidden: false, optional: false, players: [], reward: null, type: 2 }, objectiveId: 1, toPlayer: 1 }"
+    `);
 });
 
 test('a unit spawns instead of ending the game', async () => {
@@ -605,7 +658,7 @@ test('a unit spawns instead of ending the game', async () => {
     .toMatchInlineSnapshot(`
       "Move (1,1 → 2,3) { fuel: 27, completed: false, path: [2,1 → 2,2 → 2,3] }
       AttackUnit (2,3 → 3,3) { hasCounterAttack: false, playerA: 1, playerB: 2, unitA: DryUnit { health: 100, ammo: [ [ 1, 6 ] ] }, unitB: null, chargeA: 0, chargeB: 1 }
-      Spawn { units: [1,1 → Flamethrower { id: 15, health: 100, player: 2, fuel: 30, ammo: [ [ 1, 4 ] ] }], teams: null }"
+      Spawn { units: [1,1 → Flamethrower { id: 15, health: 100, player: 2, fuel: 30, ammo: [ [ 1, 4 ] ], name: 'Yuki' }], teams: null }"
     `);
 
   expect(newEffects?.get('AttackUnitGameOver')).toBeUndefined();
@@ -649,9 +702,9 @@ test('spawns a new unit when a player loses their last unit at the beginning of 
   expect(snapshotEncodedActionResponse(gameActionResponse))
     .toMatchInlineSnapshot(`
       "EndTurn { current: { funds: 10000, player: 1 }, next: { funds: 500, player: 2 }, round: 1, rotatePlayers: false, supply: null, miss: false }
-      Spawn { units: [2,3 → Flamethrower { id: 15, health: 100, player: 2, fuel: 30, ammo: [ [ 1, 4 ] ] }], teams: null }
+      Spawn { units: [2,3 → Flamethrower { id: 15, health: 100, player: 2, fuel: 30, ammo: [ [ 1, 4 ] ], name: 'Yuki' }], teams: null }
       Move (2,3 → 2,1) { fuel: 28, completed: false, path: [2,2 → 2,1] }
-      AttackUnit (2,1 → 1,1) { hasCounterAttack: true, playerA: 2, playerB: 1, unitA: DryUnit { health: 67, ammo: [ [ 1, 3 ] ] }, unitB: DryUnit { health: 72, ammo: [ [ 1, 6 ] ] }, chargeA: 166, chargeB: 105 }
+      AttackUnit (2,1 → 1,1) { hasCounterAttack: true, playerA: 2, playerB: 1, unitA: DryUnit { health: 68, ammo: [ [ 1, 3 ] ] }, unitB: DryUnit { health: 68, ammo: [ [ 1, 6 ] ] }, chargeA: 167, chargeB: 120 }
       CreateUnit (1,3 → 1,2) { unit: Rocket Launcher { id: 3, health: 100, player: 2, fuel: 40, ammo: [ [ 1, 4 ] ], moved: true, name: 'Davide', completed: true }, free: false, skipBehaviorRotation: false }
       EndTurn { current: { funds: 225, player: 2 }, next: { funds: 10000, player: 1 }, round: 2, rotatePlayers: false, supply: null, miss: false }"
     `);

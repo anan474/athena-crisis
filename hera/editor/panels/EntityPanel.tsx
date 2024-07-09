@@ -123,11 +123,11 @@ export default function EntityPanel({
           isUnit(entity)
             ? entity.setPlayer(player).removeLeader()
             : entity.setPlayer(player),
-          await changePlayer(state, actions, player),
+          await update(changePlayer(state.map, player)),
         );
       }
     },
-    [actions, editor, state, updateEntity],
+    [editor, state, update, updateEntity],
   );
 
   const updateRescue = useCallback(
@@ -324,13 +324,13 @@ export default function EntityPanel({
           </AttributeGrid>
           {isUnit(entity) && entity.player > 0 && (
             <label>
-              <Stack gap start>
+              <Stack alignCenter gap start>
                 <input
                   checked={entity.isLeader()}
                   onChange={toggleLeader}
                   type="checkbox"
                 />
-                <span className="input-label">
+                <span>
                   <fbt desc="Label for changing the leader unit">Leader</fbt>
                 </span>
               </Stack>
@@ -341,7 +341,7 @@ export default function EntityPanel({
           (entityIsBuilding &&
             !entity.info.getAllBuildableUnits()[Symbol.iterator]().next()
               .done)) && (
-          <Box gap={16} start vertical>
+          <Box className={fitContentStyle} gap={16} start vertical>
             <Stack alignCenter start>
               <Icon className={iconStyle} icon={Magic} />
               {isUnit(entity) ? (
@@ -451,4 +451,8 @@ const pixelatedStyle = css`
 const textStyle = css`
   text-align: right;
   width: 100px;
+`;
+
+const fitContentStyle = css`
+  height: fit-content;
 `;

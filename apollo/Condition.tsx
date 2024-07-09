@@ -1,15 +1,19 @@
 import { getUnitInfo } from '@deities/athena/info/Unit.tsx';
 import Vector from '@deities/athena/map/Vector.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCriteria } from '@deities/athena/WinConditions.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
 import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import { ActionResponse } from './ActionResponse.tsx';
 import transformEffectValue from './lib/transformEffectValue.tsx';
 
-export type WinConditionID = 'win' | 'lose' | 'draw' | number;
-const WinConditionIDs = new Set<WinConditionID>(['win', 'lose', 'draw']);
+export type DynamicEffectObjectiveID = 'win' | 'lose' | 'draw' | number;
+const DynamicEffectObjectiveIDs = new Set<DynamicEffectObjectiveID>([
+  'win',
+  'lose',
+  'draw',
+]);
 
-export type PlainWinConditionID = number;
+export type PlainDynamicEffectObjectiveID = number;
 
 type UnitEqualsCondition = Readonly<{
   from: Vector;
@@ -19,10 +23,19 @@ type UnitEqualsCondition = Readonly<{
 
 export type GameEndCondition = Readonly<{
   type: 'GameEnd';
-  value: WinConditionID;
+  value: DynamicEffectObjectiveID;
 }>;
 
-export type Condition = UnitEqualsCondition | GameEndCondition;
+export type OptionalObjectiveCondition = Readonly<{
+  type: 'OptionalObjective';
+  value: number;
+}>;
+
+export type Condition =
+  | GameEndCondition
+  | OptionalObjectiveCondition
+  | UnitEqualsCondition;
+
 export type Conditions = ReadonlyArray<Condition>;
 
 const equalsUnit = (
@@ -59,13 +72,24 @@ const gameEnd = (
     activeMap.getTeam(actionResponse.toPlayer).id
   ) {
     return (
-      (value === 'win' && !actionResponse.condition) ||
-      (typeof value === 'number' && value === actionResponse.conditionId)
+      (value === 'win' && !actionResponse.objective) ||
+      (typeof value === 'number' && value === actionResponse.objectiveId)
     );
   }
 
   return value === 'lose';
 };
+
+const optionalObjective = (
+  previousMap: MapData,
+  activeMap: MapData,
+  actionResponse: ActionResponse,
+  { value }: OptionalObjectiveCondition,
+) =>
+  actionResponse.type === 'OptionalObjective' &&
+  activeMap.getCurrentPlayer().teamId ===
+    activeMap.getTeam(actionResponse.toPlayer).id &&
+  value === actionResponse.objectiveId;
 
 export function evaluateCondition(
   previousMap: MapData,
@@ -79,6 +103,13 @@ export function evaluateCondition(
       return equalsUnit(previousMap, activeMap, actionResponse, condition);
     case 'GameEnd':
       return gameEnd(previousMap, activeMap, actionResponse, condition);
+    case 'OptionalObjective':
+      return optionalObjective(
+        previousMap,
+        activeMap,
+        actionResponse,
+        condition,
+      );
     default: {
       condition satisfies never;
       throw new UnknownTypeError('evaluateCondition', type);
@@ -86,7 +117,9 @@ export function evaluateCondition(
   }
 }
 
-export function encodeWinConditionID(id: WinConditionID): PlainWinConditionID {
+export function encodeDynamicEffectObjectiveID(
+  id: DynamicEffectObjectiveID,
+): PlainDynamicEffectObjectiveID {
   switch (id) {
     case 'win':
       return -1;
@@ -99,7 +132,9 @@ export function encodeWinConditionID(id: WinConditionID): PlainWinConditionID {
   }
 }
 
-export function decodeWinConditionID(id: PlainWinConditionID): WinConditionID {
+export function decodeDynamicEffectObjectiveID(
+  id: PlainDynamicEffectObjectiveID,
+): DynamicEffectObjectiveID {
   switch (id) {
     case -1:
       return 'win';
@@ -121,17 +156,17 @@ export function validateCondition(map: MapData, condition: Condition) {
       }
       return true;
     }
+    case 'OptionalObjective':
     case 'GameEnd': {
-      const {
-        config: { winConditions },
-      } = map;
       const { value } = condition;
-      return (
-        WinConditionIDs.has(value) ||
-        (typeof value === 'number' &&
-          winConditions[value] &&
-          winConditions[value].type !== WinCriteria.Default)
-      );
+
+      if (type === 'GameEnd' && DynamicEffectObjectiveIDs.has(value)) {
+        return true;
+      }
+
+      const objective =
+        typeof value === 'number' && map.config.objectives.get(value);
+      return objective && objective.type !== Criteria.Default;
     }
     default: {
       condition satisfies never;

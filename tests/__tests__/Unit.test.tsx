@@ -21,7 +21,7 @@ import Unit from '@deities/athena/map/Unit.tsx';
 import vec from '@deities/athena/map/vec.tsx';
 import Vector from '@deities/athena/map/Vector.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCriteria } from '@deities/athena/WinConditions.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
 import sortBy from '@deities/hephaestus/sortBy.tsx';
 import ImmutableMap from '@nkzw/immutable-map';
 import { expect, test } from 'vitest';
@@ -268,31 +268,43 @@ test('escort radius with label', async () => {
   const initialMap = map.copy({
     buildings: map.buildings.set(v4, House.create(1)),
     config: map.config.copy({
-      winConditions: [
-        {
-          amount: 1,
-          hidden: false,
-          label: new Set([2]),
-          players: [1],
-          type: WinCriteria.EscortAmount,
-          vectors: new Set([v4, v5]),
-        },
-        {
-          amount: 7,
-          hidden: false,
-          label: new Set([1]),
-          players: [2],
-          type: WinCriteria.EscortAmount,
-          vectors: new Set([v6, v7]),
-        },
-        {
-          amount: 15,
-          hidden: false,
-          players: [1],
-          type: WinCriteria.EscortAmount,
-          vectors: new Set([v8, v9]),
-        },
-      ],
+      objectives: ImmutableMap([
+        [
+          0,
+          {
+            amount: 1,
+            hidden: false,
+            label: new Set([2]),
+            optional: false,
+            players: [1],
+            type: Criteria.EscortAmount,
+            vectors: new Set([v4, v5]),
+          },
+        ],
+        [
+          1,
+          {
+            amount: 7,
+            hidden: false,
+            label: new Set([1]),
+            optional: false,
+            players: [2],
+            type: Criteria.EscortAmount,
+            vectors: new Set([v6, v7]),
+          },
+        ],
+        [
+          2,
+          {
+            amount: 15,
+            hidden: false,
+            optional: false,
+            players: [1],
+            type: Criteria.EscortAmount,
+            vectors: new Set([v8, v9]),
+          },
+        ],
+      ]),
     }),
     units: map.units
       .set(v1, Pioneer.create(1))
@@ -309,7 +321,7 @@ test('escort radius with label', async () => {
     .toMatchInlineSnapshot(`
       "Move (1,1 → 2,3) { fuel: 37, completed: false, path: [2,1 → 2,2 → 2,3] }
       Move (2,2 → 3,1) { fuel: 38, completed: false, path: [2,1 → 3,1] }
-      GameEnd { condition: { amount: 1, hidden: false, label: [ 2 ], players: [ 1 ], reward: null, type: 6, vectors: [ '3,1', '2,3' ] }, conditionId: 0, toPlayer: 1 }"
+      GameEnd { objective: { amount: 1, completed: Set(0) {}, hidden: false, label: [ 2 ], optional: false, players: [ 1 ], reward: null, type: 6, vectors: [ '3,1', '2,3' ] }, objectiveId: 0, toPlayer: 1 }"
     `);
 
   const screenshot = await captureOne(initialMap, '1');

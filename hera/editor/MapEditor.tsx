@@ -1,12 +1,11 @@
 import { ActionResponse } from '@deities/apollo/ActionResponse.tsx';
+import ActionResponseMutator from '@deities/apollo/ActionResponseMutator.tsx';
 import {
   decodeEffects,
   Effects,
   encodeEffects,
   Scenario,
 } from '@deities/apollo/Effects.tsx';
-import getColorName from '@deities/apollo/lib/getColorName.tsx';
-import nameGenerator from '@deities/apollo/lib/nameGenerator.tsx';
 import { Route } from '@deities/apollo/Routes.tsx';
 import getCampaignRoute from '@deities/apollo/routes/getCampaignRoute.tsx';
 import {
@@ -17,22 +16,24 @@ import {
 } from '@deities/athena/generator/MapGenerator.tsx';
 import { Bush } from '@deities/athena/info/Decorator.tsx';
 import { getTileInfo, Plain } from '@deities/athena/info/Tile.tsx';
+import createBotWithName from '@deities/athena/lib/createBotWithName.tsx';
 import dropInactivePlayers from '@deities/athena/lib/dropInactivePlayers.tsx';
 import resizeMap, { ResizeOrigin } from '@deities/athena/lib/resizeMap.tsx';
 import startGame from '@deities/athena/lib/startGame.tsx';
 import updateActivePlayers from '@deities/athena/lib/updateActivePlayers.tsx';
 import updatePlayer from '@deities/athena/lib/updatePlayer.tsx';
-import validateMap from '@deities/athena/lib/validateMap.tsx';
+import validateMap, { ErrorReason } from '@deities/athena/lib/validateMap.tsx';
 import withModifiers from '@deities/athena/lib/withModifiers.tsx';
 import { Biome, Biomes } from '@deities/athena/map/Biome.tsx';
 import { DoubleSize, TileSize } from '@deities/athena/map/Configuration.tsx';
-import { Bot, HumanPlayer, PlayerID } from '@deities/athena/map/Player.tsx';
+import { HumanPlayer, PlayerID } from '@deities/athena/map/Player.tsx';
 import { toTeamArray } from '@deities/athena/map/Team.tsx';
 import MapData, { SizeVector } from '@deities/athena/MapData.tsx';
 import getFirstOrThrow from '@deities/hephaestus/getFirstOrThrow.tsx';
 import isPresent from '@deities/hephaestus/isPresent.tsx';
 import random from '@deities/hephaestus/random.tsx';
 import { ClientGame } from '@deities/hermes/game/toClientGame.tsx';
+import { sm } from '@deities/ui/Breakpoints.tsx';
 import { isIOS } from '@deities/ui/Browser.tsx';
 import isControlElement from '@deities/ui/controls/isControlElement.tsx';
 import useInput from '@deities/ui/controls/useInput.tsx';
@@ -40,6 +41,7 @@ import { applyVar, insetStyle } from '@deities/ui/cssVar.tsx';
 import ellipsis from '@deities/ui/ellipsis.tsx';
 import ErrorText from '@deities/ui/ErrorText.tsx';
 import useAlert from '@deities/ui/hooks/useAlert.tsx';
+import useMedia from '@deities/ui/hooks/useMedia.tsx';
 import usePress from '@deities/ui/hooks/usePress.tsx';
 import useScale from '@deities/ui/hooks/useScale.tsx';
 import Icon from '@deities/ui/Icon.tsx';
@@ -63,7 +65,7 @@ import React, {
 } from 'react';
 import { useBiomeMusic, usePlayMusic } from '../audio/Music.tsx';
 import NullBehavior from '../behavior/NullBehavior.tsx';
-import { getDrawerPaddingStyle } from '../bottom-drawer/BottomDrawer.tsx';
+import { DrawerPosition, getDrawerPaddingStyle } from '../drawer/Drawer.tsx';
 import GameMap from '../GameMap.tsx';
 import useAnimationSpeed, {
   AnimationSpeed,
@@ -71,13 +73,11 @@ import useAnimationSpeed, {
 import useClientGameAction from '../hooks/useClientGameAction.tsx';
 import useHide from '../hooks/useHide.tsx';
 import { UserWithFactionNameAndSkills } from '../hooks/useUserMap.tsx';
-import botToUser from '../lib/botToUser.tsx';
 import { hasNotableAnimation } from '../MapAnimations.tsx';
 import { Actions, State, StateLike } from '../Types.tsx';
 import CurrentGameCard from '../ui/CurrentGameCard.tsx';
 import GameActions from '../ui/GameActions.tsx';
 import maybeFade from '../ui/lib/maybeFade.tsx';
-import UnknownUser from '../ui/lib/UnknownUser.tsx';
 import MapDetails from '../ui/MapDetails.tsx';
 import MapInfo from '../ui/MapInfo.tsx';
 import Notification from '../ui/Notification.tsx';
@@ -89,6 +89,7 @@ import useZoom from './hooks/useZoom.tsx';
 import BiomeIcon from './lib/BiomeIcon.tsx';
 import canFillTile from './lib/canFillTile.tsx';
 import getMapValidationErrorText from './lib/getMapValidationErrorText.tsx';
+import getValidationErrorText from './lib/getMapValidationErrorText.tsx';
 import updateUndoStack from './lib/updateUndoStack.tsx';
 import ZoomButton from './lib/ZoomButton.tsx';
 import MapEditorControlPanel from './panels/MapEditorControlPanel.tsx';
@@ -99,17 +100,12 @@ import {
   MapCreateFunction,
   MapEditorSaveState,
   MapObject,
+  MapPerformanceMetricsEstimationFunction,
   MapUpdateFunction,
   PreviousMapEditorState,
   SaveMapFunction,
   SetMapFunction,
 } from './Types.tsx';
-
-const generateName = nameGenerator();
-
-const startAction = {
-  type: 'Start',
-} as const;
 
 const MAP_KEY = 'map-editor-previous-map';
 const EFFECTS_KEY = 'map-editor-previous-effects';
@@ -149,9 +145,64 @@ const getEditorBaseState = (
   };
 };
 
-const panelShouldExpand = ({ condition, mode }: EditorState) =>
-  (mode === 'conditions' && !condition) ||
-  mode === 'effects' ||
+const prepareEffects = (
+  effects: Effects,
+  isEffectMode: boolean,
+  { effect, trigger }: Scenario,
+): { effects: Effects; lastAction: ActionResponse | null } => {
+  const startEffect = effects.get('Start');
+  if (isEffectMode) {
+    return {
+      effects:
+        trigger !== 'Start'
+          ? new Map([
+              ...effects,
+              [
+                'Start',
+                new Set([
+                  {
+                    ...effect,
+                    conditions: undefined,
+                  },
+                ]),
+              ],
+            ])
+          : effects,
+      lastAction: null,
+    };
+  }
+
+  if (startEffect) {
+    const newStartEffect = new Set(
+      [...startEffect]
+        .map((effect) => ({
+          ...effect,
+          actions: effect.actions.filter(
+            (action) => action.type === 'SpawnEffect',
+          ),
+        }))
+        .filter((effect) => effect.actions.length),
+    );
+
+    if (newStartEffect.size) {
+      return {
+        effects: new Map([...effects, ['Start', newStartEffect]]),
+        lastAction: null,
+      };
+    }
+  }
+
+  return {
+    effects,
+    lastAction: {
+      type: 'Start',
+    } as const,
+  };
+};
+
+const panelShouldExpand = ({ action, mode, objective }: EditorState) =>
+  (mode === 'objectives' && !objective) ||
+  (mode === 'effects' && !action) ||
   mode === 'restrictions' ||
   mode === 'settings' ||
   mode === 'setup';
@@ -165,6 +216,7 @@ export type BaseMapEditorProps = Readonly<{
     state: State;
   }) => ReactNode;
   inset?: number;
+  isValidName?: (name: string, extraCharacters: string) => boolean;
   mode?: EditorMode;
   scenario?: Scenario;
   setHasChanges: (hasChanges: boolean) => void;
@@ -176,9 +228,11 @@ export default function MapEditor({
   children,
   confirmActionStyle,
   createMap,
+  estimateMapPerformance,
   fogStyle,
   inset = 0,
   isAdmin,
+  isValidName = () => true,
   mapObject,
   mode,
   scenario,
@@ -190,6 +244,7 @@ export default function MapEditor({
   animationSpeed: AnimationSpeed | null;
   confirmActionStyle: 'always' | 'touch' | 'never';
   createMap: MapCreateFunction;
+  estimateMapPerformance?: MapPerformanceMetricsEstimationFunction;
   fogStyle: 'soft' | 'hard';
   isAdmin?: boolean;
   mapObject?: MapObject | null;
@@ -197,6 +252,7 @@ export default function MapEditor({
   updateMap: MapUpdateFunction;
   user: UserWithFactionNameAndSkills;
 }) {
+  const users = useMemo(() => new Map([[user.id, user]]), [user]);
   const withHumanPlayer = useCallback(
     (map: MapData, playerId: PlayerID = map.active[0]) => {
       const player =
@@ -250,9 +306,9 @@ export default function MapEditor({
     _setEditorState((editor) => {
       const shouldResetCondition =
         'mode' in newState &&
-        newState.mode !== 'conditions' &&
-        editor.condition &&
-        !newState.condition;
+        newState.mode !== 'objectives' &&
+        editor.objective &&
+        !newState.objective;
 
       const shouldResetScenario =
         'mode' in newState && newState.mode !== 'effects';
@@ -290,9 +346,9 @@ export default function MapEditor({
 
       return {
         ...mergedState,
-        ...(shouldResetCondition ? { condition: undefined } : null),
+        ...(shouldResetCondition ? { objective: undefined } : null),
         ...(shouldResetScenario
-          ? { scenario: getDefaultScenario(editor.effects) }
+          ? { action: undefined, scenario: getDefaultScenario(editor.effects) }
           : null),
       };
     });
@@ -321,8 +377,8 @@ export default function MapEditor({
     useState<PreviousMapEditorState | null>(() => {
       try {
         return {
-          effects: Storage.getItem(EFFECTS_KEY) || '',
-          map: MapData.fromJSON(Storage.getItem(MAP_KEY) || ''),
+          effects: Storage.get(EFFECTS_KEY) || '',
+          map: MapData.fromJSON(Storage.get(MAP_KEY) || ''),
         };
         // eslint-disable-next-line no-empty
       } catch {}
@@ -352,7 +408,7 @@ export default function MapEditor({
       const effects = JSON.stringify(
         editorEffects ? encodeEffects(editorEffects) : '',
       );
-      Storage.setItem(MAP_KEY, JSON.stringify(map));
+      Storage.set(MAP_KEY, JSON.stringify(map));
       setPreviousState(map ? { effects, map } : null);
     },
     [],
@@ -372,8 +428,7 @@ export default function MapEditor({
       setActAsEveryPlayer(actAsEveryPlayer);
       const mapWithActivePlayers = updateActivePlayers(
         currentMap,
-        (player) =>
-          Bot.from(player, `${getColorName(player.id)} ${generateName()}`),
+        createBotWithName,
         editor.mode === 'effects' ? undefined : map.currentPlayer,
         user.id,
       );
@@ -389,30 +444,17 @@ export default function MapEditor({
       setIsPlayTesting(playTest);
       setMenuIsExpanded(false);
       setSaveState(null);
-      const { effect, trigger } = editor.scenario;
-      const isEffectMode = editor.mode === 'effects';
       setGame(
         playTest
           ? {
-              effects:
-                isEffectMode && trigger === 'GameEnd'
-                  ? new Map([
-                      ...editor.effects,
-                      [
-                        'Start',
-                        new Set([
-                          {
-                            ...effect,
-                            conditions: undefined,
-                          },
-                        ]),
-                      ],
-                    ])
-                  : editor.effects,
               ended: false,
-              lastAction: isEffectMode ? null : startAction,
               state: newMap,
               turnState: null,
+              ...prepareEffects(
+                editor.effects,
+                editor.mode === 'effects',
+                editor.scenario,
+              ),
             }
           : null,
       );
@@ -431,10 +473,10 @@ export default function MapEditor({
 
   const saveMap: SaveMapFunction = useCallback(
     (currentMap, type = 'Update') => {
-      if (!mapName) {
+      if (!mapName || !isValidName(mapName, "_ -!?'")) {
         setSaveState({
           message: fbt(
-            'Please enter a map name.',
+            'Please enter a valid map name.',
             'Error dialog when saving a map',
           ),
         });
@@ -487,6 +529,7 @@ export default function MapEditor({
     [
       createMap,
       editor.effects,
+      isValidName,
       mapName,
       mapObject?.id,
       setMap,
@@ -620,9 +663,9 @@ export default function MapEditor({
           setEditorState({
             mode: 'effects',
           });
-        } else if (event.code === 'KeyC') {
+        } else if (event.code === 'KeyO') {
           setEditorState({
-            mode: 'conditions',
+            mode: 'objectives',
           });
         } else if (event.code === 'KeyR') {
           setEditorState({
@@ -632,7 +675,7 @@ export default function MapEditor({
           setEditorState({
             mode: 'entity',
           });
-        } else if (event.code === 'KeyO') {
+        } else if (event.code === 'KeyC') {
           setEditorState({
             mode: 'decorators',
           });
@@ -704,7 +747,7 @@ export default function MapEditor({
         config: newMap.config.copy({
           blocklistedBuildings: map.config.blocklistedBuildings,
           blocklistedUnits: map.config.blocklistedUnits,
-          winConditions: map.config.winConditions,
+          objectives: map.config.objectives,
         }),
       }),
     );
@@ -732,21 +775,31 @@ export default function MapEditor({
     (size: SizeVector, origin: Set<ResizeOrigin>) => {
       const map = stateRef.current?.map;
       if (map && !size.equals(map.size)) {
-        setMap('resize', resizeMap(map, size, origin, editor?.selected?.tile));
+        const [newMap, newEffects] = resizeMap(
+          map,
+          editor.effects,
+          size,
+          origin,
+          editor?.selected?.tile,
+        );
+        setMap('resize', newMap);
+        setEditorState({
+          action: undefined,
+          effects: newEffects,
+          objective: undefined,
+          scenario: getDefaultScenario(newEffects),
+        });
       }
     },
-    [editor?.selected?.tile, setMap],
+    [editor.effects, editor?.selected?.tile, setEditorState, setMap],
   );
 
-  const mutateAction = useCallback(
-    (actionResponse: ActionResponse) =>
-      actAsEveryPlayer && actionResponse.type === 'EndTurn'
-        ? { ...actionResponse, rotatePlayers: true }
-        : actionResponse,
-    [actAsEveryPlayer],
+  const onAction = useClientGameAction(
+    game,
+    setGame,
+    null,
+    actAsEveryPlayer ? 'actAsEveryPlayer' : null,
   );
-
-  const onAction = useClientGameAction(game, setGame, mutateAction);
 
   useEffect(() => {
     if (saveState) {
@@ -771,6 +824,21 @@ export default function MapEditor({
     return new Map(player ? [[player.id, user.factionName]] : undefined);
   }, [map, user.factionName, user.id]);
 
+  const isMedium = useMedia(`(min-width: ${sm}px)`);
+  const [drawerPosition, _setDrawerPosition] = useState<DrawerPosition>(() =>
+    Storage.get('map-editor-position') === 'left' && isMedium
+      ? 'left'
+      : 'bottom',
+  );
+  const setDrawerPosition = useCallback((position: DrawerPosition) => {
+    _setDrawerPosition(position);
+    Storage.set('map-editor-position', position);
+  }, []);
+
+  if (!isMedium && drawerPosition === 'left') {
+    _setDrawerPosition('bottom');
+  }
+
   const delay = internalMapID === 0;
   const hidden = useHide();
   if (isPlayTesting) {
@@ -791,7 +859,9 @@ export default function MapEditor({
         key="play-test-map"
         lastActionResponse={game?.lastAction || undefined}
         map={game?.state || map}
-        mutateAction={mutateAction}
+        mutateAction={
+          actAsEveryPlayer ? ActionResponseMutator.actAsEveryPlayer : undefined
+        }
         onAction={onAction}
         pan
         scale={zoom}
@@ -814,18 +884,7 @@ export default function MapEditor({
                 inlineUI={props.inlineUI}
                 inset={inset}
                 map={props.map}
-                teams={[...props.map.teams.sortBy(({ id }) => id).values()].map(
-                  (team) => ({
-                    team,
-                    users: team.players.map((player) =>
-                      player.isHumanPlayer() && user.id === player.userId
-                        ? user
-                        : player.isBot()
-                          ? botToUser(player)
-                          : UnknownUser,
-                    ),
-                  }),
-                )}
+                users={users}
                 vision={props.vision}
                 zIndex={props.zIndex}
               />
@@ -946,7 +1005,7 @@ export default function MapEditor({
         </PrimaryExpandableMenuButton>
         <ZoomButton hide={hidden} max={maxZoom} setZoom={setZoom} zoom={zoom} />
       </Portal>
-      <div className={getDrawerPaddingStyle(expand)}>
+      <div className={getDrawerPaddingStyle(drawerPosition, expand)}>
         <GameMap
           animatedChildren={({ map, position, showCursor, zIndex }) => (
             <ResizeHandle
@@ -961,13 +1020,15 @@ export default function MapEditor({
               ? DesignBehavior
               : editor.mode === 'entity'
                 ? EntityBehavior
-                : editor.mode === 'conditions' && editor.condition
+                : (editor.mode === 'objectives' && editor.objective) ||
+                    (editor.mode === 'effects' && editor.action)
                   ? VectorBehavior
                   : NullBehavior
           }
           confirmActionStyle={confirmActionStyle}
           currentUserId={user.id}
           editor={editor}
+          effects={editor.effects}
           factionNames={factionNames}
           fogStyle={fogStyle}
           inset={inset}
@@ -987,7 +1048,9 @@ export default function MapEditor({
               <>
                 <MapEditorControlPanel
                   actions={actions}
+                  drawerPosition={drawerPosition}
                   editor={editor}
+                  estimateMapPerformance={estimateMapPerformance}
                   expand={expand}
                   fillMap={fillMap}
                   inset={inset}
@@ -999,6 +1062,7 @@ export default function MapEditor({
                   resize={resize}
                   restorePreviousState={restorePreviousState}
                   saveMap={saveMap}
+                  setDrawerPosition={setDrawerPosition}
                   setEditorState={setEditorState}
                   setMap={setMap}
                   setMapName={setMapName}
@@ -1016,9 +1080,13 @@ export default function MapEditor({
         </GameMap>
       </div>
       <Portal>
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="sync">
           {saveState && (
-            <Notification center={hasSaved || undefined} inset={inset}>
+            <Notification
+              center={hasSaved || undefined}
+              inset={inset}
+              key={'id' in saveState ? saveState.id : saveState.message}
+            >
               {hasSaved ? (
                 <fbt desc="Text after saving a map">
                   Map &quot;<fbt:param name="mapName">{mapName}</fbt:param>&quot;
@@ -1031,8 +1099,6 @@ export default function MapEditor({
                       <fbt desc="Map save error with invalid map name">
                         Invalid map name. Please choose a different map name.
                       </fbt>
-                    ) : saveState.id === 'invalid-map' ? (
-                      <fbt desc="Map save error">This map is invalid.</fbt>
                     ) : saveState.id === 'invalid-permission' ? (
                       <fbt desc="Map save error">
                         You do not have permission to change this map.
@@ -1042,9 +1108,7 @@ export default function MapEditor({
                         A map with this name already exists.
                       </fbt>
                     ) : (
-                      <fbt desc="Generic error message">
-                        Oops, something went wrong. Please try again.
-                      </fbt>
+                      getValidationErrorText(saveState.id as ErrorReason)
                     )
                   ) : (
                     saveState.message

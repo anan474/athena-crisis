@@ -15,13 +15,12 @@ export default function onGameEnd(
     const map = activeMap.copy({
       currentPlayer: viewerId,
     });
-    const { condition } = lastAction;
-    const secretCondition = condition?.hidden ? condition : null;
-
-    const secretState = secretCondition
+    const { objective, toPlayer } = lastAction;
+    const secretCondition = objective?.hidden ? objective : null;
+    const secretGameState = secretCondition
       ? [
           [
-            { condition: secretCondition, type: 'SecretDiscovered' },
+            { objective: secretCondition, toPlayer, type: 'SecretDiscovered' },
             activeMap,
           ] as const,
         ]
@@ -31,15 +30,15 @@ export default function onGameEnd(
       applyEffects(map, map, effects, lastAction) ||
       applyEffects(map, map, effects, {
         ...lastAction,
-        condition: undefined,
-        conditionId: undefined,
+        objective: undefined,
+        objectiveId: undefined,
       });
 
     const lastMap = effectGameState?.at(-1)?.[1];
     if (lastMap) {
       const adjustedGameState = [
         [{ type: 'SetViewer' }, lastMap] as const,
-        ...(secretState || []),
+        ...(secretGameState || []),
         ...effectGameState.map(
           ([actionResponse, map]) => [actionResponse, map] as const,
         ),
@@ -81,8 +80,8 @@ export default function onGameEnd(
       ];
     }
 
-    return secretState
-      ? [...gameState.slice(0, -1), ...secretState, gameState.at(-1)!]
+    return secretGameState
+      ? [...gameState.slice(0, -1), ...secretGameState, gameState.at(-1)!]
       : gameState;
   }
 

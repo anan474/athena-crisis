@@ -3,6 +3,7 @@ import { Biome } from '@deities/athena/map/Biome.tsx';
 import { injectGlobal } from '@emotion/css';
 import paletteSwap, { HEX } from '@nkzw/palette-swap';
 import Variants from 'athena-crisis:asset-variants';
+import { AssetDomain, AssetVersion } from './AssetInfo.tsx';
 import BiomeVariants from './BiomeVariants.tsx';
 import VariantConfiguration, {
   SpriteVariantConfiguration,
@@ -29,11 +30,10 @@ type Canvas = ReturnType<PaletteSwapFn> extends ReadonlyMap<unknown, infer V>
 
 type CanvasToURLFn = (canvas: Canvas, name: string) => Promise<string>;
 
-const SHOULD_SWAP =
-  process.env.NODE_ENV !== 'production' || process.env.IS_DEMO;
-
-export const AssetDomain = 'https://art.athenacrisis.com';
-export const AssetVersion = 'v10';
+const shouldSwap = () =>
+  process.env.NODE_ENV !== 'production' ||
+  process.env.IS_DEMO ||
+  !navigator.onLine;
 
 // Keep remote images in memory forever.
 const imageCache = [];
@@ -79,7 +79,7 @@ const imageIsDefined = (
 ): args is PaletteSwapParameters => args[0] !== null;
 
 const swap = (...args: MaybePaletteSwapParameters) => {
-  if (SHOULD_SWAP && imageIsDefined(args)) {
+  if (shouldSwap() && imageIsDefined(args)) {
     return [...paletteSwap(...args)];
   }
 
@@ -118,7 +118,7 @@ const _prepareSprites = async (
 
     const variantDetails = Variants.get(imageName);
     promises.push(
-      (SHOULD_SWAP && variantDetails
+      (shouldSwap() && variantDetails
         ? loadImage(variantDetails.source)
         : nullPromise
       ).then((image) =>

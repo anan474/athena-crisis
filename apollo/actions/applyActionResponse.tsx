@@ -21,8 +21,8 @@ import writeTile from '@deities/athena/mutation/writeTile.tsx';
 import { VisionT } from '@deities/athena/Vision.tsx';
 import UnknownTypeError from '@deities/hephaestus/UnknownTypeError.tsx';
 import { ActionResponse } from '../ActionResponse.tsx';
-import { applyGameOverActionResponse } from '../GameOver.tsx';
 import { applyHiddenActionResponse } from '../HiddenAction.tsx';
+import { applyObjectiveActionResponse } from '../Objective.tsx';
 import applyEndTurnActionResponse from './applyEndTurnActionResponse.tsx';
 
 export default function applyActionResponse(
@@ -118,6 +118,10 @@ export default function applyActionResponse(
         units.get(to)?.player === originalUnitB?.player
           ? 0
           : 1;
+      const oneShotB =
+        originalUnitB && originalUnitB.health >= MaxHealth && !unitB ? 1 : 0;
+      const oneShotA =
+        originalUnitA && originalUnitA.health >= MaxHealth && !unitA ? 1 : 0;
       return map.copy({
         teams: updatePlayers(map.teams, [
           map
@@ -128,6 +132,7 @@ export default function applyActionResponse(
                 : 0,
               destroyedUnits,
               lostUnits,
+              oneShots: oneShotB,
             })
             .maybeSetCharge(chargeA),
           playerB !== 0
@@ -142,6 +147,7 @@ export default function applyActionResponse(
                   ),
                   destroyedUnits: lostUnits,
                   lostUnits: destroyedUnits,
+                  oneShots: oneShotA,
                 })
                 .maybeSetCharge(chargeB)
             : null,
@@ -191,6 +197,13 @@ export default function applyActionResponse(
         units.get(from)?.player === originalUnitA?.player
           ? 0
           : 1;
+      const oneShotC =
+        originalUnitC &&
+        ((originalUnitC?.health >= MaxHealth && !unitC) || !building)
+          ? 1
+          : 0;
+      const oneShotA =
+        originalUnitA && originalUnitA?.health >= MaxHealth && !unitA ? 1 : 0;
       // Update `playerA` and `playerB` first, then update `playerC` which might equal `playerB`.
       const teams = originalBuilding
         ? updatePlayers(map.teams, [
@@ -203,6 +216,7 @@ export default function applyActionResponse(
                 ),
                 destroyedBuildings: building ? 0 : 1,
                 lostUnits,
+                oneShots: oneShotC,
               })
               .maybeSetCharge(chargeA),
             originalBuilding.player > 0
@@ -236,6 +250,7 @@ export default function applyActionResponse(
                         : 0,
                     destroyedUnits: lostUnits,
                     lostUnits: unitC ? 0 : 1,
+                    oneShots: oneShotA,
                   })
                   .maybeSetCharge(chargeC),
               )
@@ -416,20 +431,28 @@ export default function applyActionResponse(
       return map.copy({ units: map.units.set(from, unit.move()) });
     }
     case 'Rescue': {
-      const { from, player, to } = actionResponse;
+      const { from, name, player, to } = actionResponse;
       const unitA = from && map.units.get(from)!;
       const unitB = map.units.get(to)!;
-      const units = map.units.set(
-        to,
-        unitB.isBeingRescuedBy(player)
-          ? unitB
-              .stopBeingRescued()
-              .setPlayer(player)
-              .setHealth(MaxHealth)
-              .recover()
-          : unitB.rescue(player),
-      );
+      const rescueFinished = unitB.isBeingRescuedBy(player);
+      let newUnit = rescueFinished
+        ? unitB
+            .stopBeingRescued()
+            .setPlayer(player)
+            .setHealth(MaxHealth)
+            .recover()
+        : unitB.rescue(player);
+      if (name != null) {
+        newUnit = newUnit.withName(name);
+      }
+      const units = map.units.set(to, newUnit);
       return map.copy({
+        teams: rescueFinished
+          ? updatePlayer(
+              map.teams,
+              map.getPlayer(player).modifyStatistic('rescuedUnits', 1),
+            )
+          : map.teams,
         units: unitA ? units.set(from, unitA.complete()) : units,
       });
     }
@@ -464,12 +487,13 @@ export default function applyActionResponse(
           player.setCharge(player.charge - Charge).modifyStatistics({
             damage: unit ? unit.health : 0,
             destroyedUnits: unit ? 1 : 0,
+            oneShots: unit && unit.health >= MaxHealth ? 1 : 0,
           }),
           unit
             ? map.getPlayer(unit.player).modifyStatistic('lostUnits', 1)
             : null,
         ]),
-        units: unit ? map.units.delete(to) : undefined,
+        units: unit ? map.units.delete(to) : map.units,
       });
     }
     case 'HiddenFundAdjustment':
@@ -480,12 +504,13 @@ export default function applyActionResponse(
     case 'HiddenTargetAttackBuilding':
     case 'HiddenTargetAttackUnit':
       return applyHiddenActionResponse(map, vision, actionResponse);
+    case 'OptionalObjective':
     case 'AttackUnitGameOver':
     case 'BeginTurnGameOver':
     case 'CaptureGameOver':
-    case 'PreviousTurnGameOver':
     case 'GameEnd':
-      return applyGameOverActionResponse(map, actionResponse);
+    case 'PreviousTurnGameOver':
+      return applyObjectiveActionResponse(map, actionResponse);
     case 'SetViewer': {
       const currentPlayer = map.maybeGetPlayer(vision.currentViewer)?.id;
       return currentPlayer
@@ -531,18 +556,29 @@ export default function applyActionResponse(
     }
     case 'ReceiveReward': {
       const { player, reward } = actionResponse;
-      if (reward.type === 'skill') {
-        const playerA = map.getPlayer(player);
-        return map.copy({
-          teams: updatePlayer(
-            map.teams,
-            playerA.copy({
-              skills: new Set([...playerA.skills, reward.skill]),
-            }),
-          ),
-        });
+      const rewardType = reward.type;
+      switch (rewardType) {
+        case 'Skill': {
+          const playerA = map.getPlayer(player);
+          return map.copy({
+            teams: updatePlayer(
+              map.teams,
+              playerA.copy({
+                skills: new Set([...playerA.skills, reward.skill]),
+              }),
+            ),
+          });
+        }
+        case 'UnitPortraits':
+          return map;
+        default: {
+          rewardType satisfies never;
+          throw new UnknownTypeError(
+            'applyActionResponse:ReceiveReward',
+            rewardType,
+          );
+        }
       }
-      return map;
     }
     case 'BeginGame':
     case 'SecretDiscovered':

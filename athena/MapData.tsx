@@ -29,6 +29,7 @@ import Player, {
   toPlayerID,
   toPlayerIDs,
 } from './map/Player.tsx';
+import { PerformanceExpectation } from './map/PlayerPerformance.tsx';
 import {
   decodeBuildings,
   decodeDecorators,
@@ -41,13 +42,14 @@ import {
 import Team, { Teams } from './map/Team.tsx';
 import Unit from './map/Unit.tsx';
 import Vector from './map/Vector.tsx';
-import Vision, { Fog, VisionT } from './Vision.tsx';
 import {
-  decodeWinConditions,
-  encodeWinConditions,
-  WinConditions,
-  WinCriteria,
-} from './WinConditions.tsx';
+  Criteria,
+  decodeLegacyWinConditions,
+  decodeObjectives,
+  encodeObjectives,
+  Objectives,
+} from './Objectives.tsx';
+import Vision, { Fog, VisionT } from './Vision.tsx';
 
 export type ID = number;
 
@@ -88,7 +90,8 @@ export class MapConfig {
     public readonly blocklistedUnits: ReadonlySet<ID>,
     public readonly fog: boolean,
     public readonly biome: Biome,
-    public readonly winConditions: WinConditions,
+    public readonly objectives: Objectives,
+    public readonly performance: PerformanceExpectation,
   ) {}
 
   copy({
@@ -98,8 +101,9 @@ export class MapConfig {
     blocklistedUnits,
     fog,
     multiplier,
+    objectives,
+    performance,
     seedCapital,
-    winConditions,
   }: Partial<MapConfig>) {
     return new MapConfig(
       multiplier ?? this.multiplier,
@@ -109,11 +113,12 @@ export class MapConfig {
       blocklistedUnits ?? this.blocklistedUnits,
       fog ?? this.fog,
       biome ?? this.biome,
-      winConditions ?? this.winConditions,
+      objectives ?? this.objectives,
+      performance ?? this.performance,
     );
   }
 
-  toJSON() {
+  toJSON(): PlainMapConfig {
     const {
       biome,
       blocklistedBuildings,
@@ -121,8 +126,9 @@ export class MapConfig {
       blocklistedUnits,
       fog,
       multiplier,
+      objectives,
+      performance,
       seedCapital,
-      winConditions,
     } = this;
     return {
       biome,
@@ -131,8 +137,9 @@ export class MapConfig {
       blocklistedUnits: [...blocklistedUnits],
       fog,
       multiplier,
+      objectives: encodeObjectives(objectives),
+      performance: [performance.pace, performance.power, performance.style],
       seedCapital,
-      winConditions: encodeWinConditions(winConditions),
     };
   }
 }
@@ -562,22 +569,32 @@ export default class MapData {
   }
 
   static fromObject(data: PlainMap) {
+    const { config } = data;
     const size = new SizeVector(data.size.width, data.size.height);
     return new MapData(
       data.map,
       data.modifiers,
       decodeDecorators(size, data.decorators),
       new MapConfig(
-        data.config.multiplier,
-        data.config.seedCapital,
-        new Set(data.config.blocklistedBuildings),
-        new Set(data.config.blocklistedSkills),
-        new Set(data.config.blocklistedUnits),
-        data.config.fog,
-        data.config.biome,
-        (data.config.winConditions
-          ? decodeWinConditions(data.config.winConditions)
-          : null) || [{ hidden: false, type: WinCriteria.Default }],
+        config.multiplier,
+        config.seedCapital,
+        new Set(config.blocklistedBuildings),
+        new Set(config.blocklistedSkills),
+        new Set(config.blocklistedUnits),
+        config.fog,
+        config.biome,
+        config.objectives
+          ? decodeObjectives(config.objectives)
+          : config.winConditions
+            ? decodeLegacyWinConditions(config.winConditions)
+            : ImmutableMap([[0, { hidden: false, type: Criteria.Default }]]),
+        config.performance
+          ? {
+              pace: config.performance[0] || null,
+              power: config.performance[1] || null,
+              style: config.performance[2] || null,
+            }
+          : { pace: null, power: null, style: null },
       ),
       size,
       toPlayerID(data.currentPlayer),

@@ -1,11 +1,8 @@
+import { BuildableTiles } from '@deities/athena/info/Building.tsx';
 import Player, { PlayerID } from '@deities/athena/map/Player.tsx';
 import Vector from '@deities/athena/map/Vector.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import {
-  winConditionHasVectors,
-  WinCriteria,
-} from '@deities/athena/WinConditions.tsx';
-import { BuildableTiles } from './getInterestingVectors.tsx';
+import { Criteria, objectiveHasVectors } from '@deities/athena/Objectives.tsx';
 import { PotentialUnitAbilities } from './getPossibleUnitAbilities.tsx';
 import needsSupply from './needsSupply.tsx';
 import shouldCaptureBuilding from './shouldCaptureBuilding.tsx';
@@ -49,17 +46,17 @@ export default function getInterestingVectorsByAbilities(
     });
   }
 
-  for (const condition of map.config.winConditions) {
+  for (const [, objective] of map.config.objectives) {
     if (
-      condition.type !== WinCriteria.Default &&
-      (!condition.players || condition.players.includes(currentPlayer.id))
+      objective.type !== Criteria.Default &&
+      (!objective.players || objective.players.includes(currentPlayer.id))
     ) {
       if (
-        winConditionHasVectors(condition) &&
-        (!condition.label?.size ||
-          (label != null && condition.label.has(label)))
+        objectiveHasVectors(objective) &&
+        (!objective.label?.size ||
+          (label != null && objective.label.has(label)))
       ) {
-        vectors.push(...condition.vectors);
+        vectors.push(...objective.vectors);
       }
     }
   }

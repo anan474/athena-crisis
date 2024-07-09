@@ -247,7 +247,6 @@ export default function DesignPanel({
   const onLongPress: SelectTileFn = useCallback(
     ({ building, tile, unit }) => {
       actions.showGameInfo({
-        biome,
         building,
         origin,
         tile: unit || building ? null : tile,
@@ -256,7 +255,7 @@ export default function DesignPanel({
         vector: vec(1, 1),
       });
     },
-    [actions, biome],
+    [actions],
   );
 
   return (
@@ -353,68 +352,71 @@ export default function DesignPanel({
               />
             </InlineTileList>
           </Box>
+        </Stack>
+        <Stack gap={24} vertical>
+          <Box className={drawingModeContainerStyle}>
+            <Stack gap={16} start vertical>
+              <InlineLink
+                className={cx(fillStyle, ellipsis)}
+                onClick={() => {
+                  setEditorState({ drawingMode: 'regular' });
+                }}
+                selected={editor.drawingMode === 'regular'}
+              >
+                <Icon height={32} icon={RegularDrawingMode} width={32} />
+              </InlineLink>
+              <InlineLink
+                className={cx(fillStyle, ellipsis)}
+                onClick={() => {
+                  setEditorState({ drawingMode: 'horizontal' });
+                }}
+                selected={editor.drawingMode === 'horizontal'}
+              >
+                <Icon height={32} icon={HorizontalDrawingMode} width={32} />
+              </InlineLink>
+              <InlineLink
+                className={cx(fillStyle, ellipsis)}
+                onClick={() => {
+                  setEditorState({ drawingMode: 'vertical' });
+                }}
+                selected={editor.drawingMode === 'vertical'}
+              >
+                <Icon height={32} icon={VerticalDrawingMode} width={32} />
+              </InlineLink>
+              <InlineLink
+                className={cx(fillStyle, ellipsis)}
+                onClick={() => {
+                  setEditorState({ drawingMode: 'diagonal' });
+                }}
+                selected={editor.drawingMode === 'diagonal'}
+              >
+                <Icon height={32} icon={DiagonalDrawingMode} width={32} />
+              </InlineLink>{' '}
+              <InlineLink
+                className={cx(fillStyle, ellipsis)}
+                onClick={() => {
+                  setEditorState({ drawingMode: 'horizontal-vertical' });
+                }}
+                selected={editor.drawingMode === 'horizontal-vertical'}
+              >
+                <Icon
+                  height={32}
+                  icon={HorizontalVerticalDrawingMode}
+                  width={32}
+                />
+              </InlineLink>
+            </Stack>
+          </Box>
           <Box center gap={32}>
             <EditorPlayerSelector
               actions={actions}
               editor={editor}
               setEditorState={setEditorState}
               state={state}
+              vertical
             />
           </Box>
         </Stack>
-        <Box className={drawingModeContainerStyle}>
-          <Stack gap={16} start vertical>
-            <InlineLink
-              className={cx(fillStyle, ellipsis)}
-              onClick={() => {
-                setEditorState({ drawingMode: 'regular' });
-              }}
-              selected={editor.drawingMode === 'regular'}
-            >
-              <Icon height={32} icon={RegularDrawingMode} width={32} />
-            </InlineLink>
-            <InlineLink
-              className={cx(fillStyle, ellipsis)}
-              onClick={() => {
-                setEditorState({ drawingMode: 'horizontal' });
-              }}
-              selected={editor.drawingMode === 'horizontal'}
-            >
-              <Icon height={32} icon={HorizontalDrawingMode} width={32} />
-            </InlineLink>
-            <InlineLink
-              className={cx(fillStyle, ellipsis)}
-              onClick={() => {
-                setEditorState({ drawingMode: 'vertical' });
-              }}
-              selected={editor.drawingMode === 'vertical'}
-            >
-              <Icon height={32} icon={VerticalDrawingMode} width={32} />
-            </InlineLink>
-            <InlineLink
-              className={cx(fillStyle, ellipsis)}
-              onClick={() => {
-                setEditorState({ drawingMode: 'diagonal' });
-              }}
-              selected={editor.drawingMode === 'diagonal'}
-            >
-              <Icon height={32} icon={DiagonalDrawingMode} width={32} />
-            </InlineLink>{' '}
-            <InlineLink
-              className={cx(fillStyle, ellipsis)}
-              onClick={() => {
-                setEditorState({ drawingMode: 'horizontal-vertical' });
-              }}
-              selected={editor.drawingMode === 'horizontal-vertical'}
-            >
-              <Icon
-                height={32}
-                icon={HorizontalVerticalDrawingMode}
-                width={32}
-              />
-            </InlineLink>
-          </Stack>
-        </Box>
       </Stack>
     </Tick>
   );

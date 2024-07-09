@@ -1,3 +1,4 @@
+import getActivePlayers from '@deities/athena/lib/getActivePlayers.tsx';
 import mergeTeams from '@deities/athena/lib/mergeTeams.tsx';
 import { Teams } from '@deities/athena/map/Team.tsx';
 import Unit from '@deities/athena/map/Unit.tsx';
@@ -13,7 +14,9 @@ export default function spawn(
   state: State,
   unitsToSpawn: ReadonlyArray<[Vector, Unit]>,
   teams: Teams | null | undefined,
+  speed: 'fast' | 'slow',
   onComplete: StateToStateLike,
+  isEditor = false,
 ): StateLike | null {
   const { animationConfig } = state;
   const [entry, ...remainingUnits] = unitsToSpawn;
@@ -35,20 +38,21 @@ export default function spawn(
   const name = newPlayer ? (newPlayer.isBot() ? newPlayer.name : null) : null;
 
   const animationKey = new AnimationKey();
-  const animations = name
-    ? state.animations.set(animationKey, {
-        color: unit.player,
-        text: String(
-          fbt(
-            `${fbt.param('name', name)} is invading!`,
-            'user or bot is invading the game',
+  const animations =
+    name && !isEditor
+      ? state.animations.set(animationKey, {
+          color: unit.player,
+          text: String(
+            fbt(
+              `${fbt.param('name', name)} is invading!`,
+              'user or bot is invading the game',
+            ),
           ),
-        ),
-        type: 'notice',
-      })
-    : state.animations;
+          type: 'notice',
+        })
+      : state.animations;
 
-  return {
+  const spawnUnit = (state: State) => ({
     animations: animations.set(position, {
       locked: false,
       onComplete: (state: State) => {
@@ -58,23 +62,44 @@ export default function spawn(
         actions.scheduleTimer(
           () =>
             actions.update((state) =>
-              spawn(actions, state, remainingUnits, teams, onComplete),
+              spawn(actions, state, remainingUnits, teams, speed, onComplete),
             ),
-          animationConfig.AnimationDuration,
+          animationConfig.ExplosionStep,
         );
         return state;
       },
-      onSpawn: ({ map }: State) => ({
-        map: mergeTeams(
-          map.copy({
-            units: map.units.set(position, unit),
+      onSpawn: ({ map }: State) => {
+        map = map.copy({
+          units: map.units.set(position, unit),
+        });
+
+        if (!map.maybeGetPlayer(unit.player)) {
+          map = mergeTeams(
+            map,
+            newTeam ? ImmutableMap([[newTeam.id, newTeam]]) : undefined,
+          );
+        }
+
+        return {
+          map: map.copy({
+            active: getActivePlayers(map),
           }),
-          newTeam ? ImmutableMap([[newTeam.id, newTeam]]) : undefined,
-        ),
-      }),
+        };
+      },
+      speed,
       type: 'spawn',
       unitDirection: getUnitDirection(state.map.getFirstPlayerID(), unit),
       variant: unit.player,
     }),
-  };
+  });
+
+  return isEditor
+    ? spawnUnit(state)
+    : {
+        animations: animations.set(new AnimationKey(), {
+          onComplete: spawnUnit,
+          positions: [position],
+          type: 'scrollIntoView',
+        }),
+      };
 }

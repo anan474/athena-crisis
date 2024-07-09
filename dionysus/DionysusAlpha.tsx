@@ -17,7 +17,13 @@ import {
   ToggleLightningAction,
   UnfoldAction,
 } from '@deities/apollo/action-mutators/ActionMutators.tsx';
-import { Behavior, filterBuildings } from '@deities/athena/info/Building.tsx';
+import {
+  Behavior,
+  BuildableTiles,
+  BuildingInfo,
+  filterBuildings,
+  getAllBuildings,
+} from '@deities/athena/info/Building.tsx';
 import { getSkillConfig, Skill } from '@deities/athena/info/Skill.tsx';
 import { Lightning } from '@deities/athena/info/Tile.tsx';
 import { Ability, UnitInfo } from '@deities/athena/info/Unit.tsx';
@@ -29,6 +35,7 @@ import determineUnitsToCreate from '@deities/athena/lib/determineUnitsToCreate.t
 import getDeployableVectors from '@deities/athena/lib/getDeployableVectors.tsx';
 import getRescuableVectors from '@deities/athena/lib/getRescuableVectors.tsx';
 import getUnitsToRefill from '@deities/athena/lib/getUnitsToRefill.tsx';
+import hasUnitsOrProductionBuildings from '@deities/athena/lib/hasUnitsOrProductionBuildings.tsx';
 import { AIBehavior } from '@deities/athena/map/AIBehavior.tsx';
 import Building from '@deities/athena/map/Building.tsx';
 import { Charge } from '@deities/athena/map/Configuration.tsx';
@@ -41,8 +48,8 @@ import Player, { PlayerID } from '@deities/athena/map/Player.tsx';
 import Unit from '@deities/athena/map/Unit.tsx';
 import Vector from '@deities/athena/map/Vector.tsx';
 import MapData from '@deities/athena/MapData.tsx';
+import { getOpponentPriorityLabels } from '@deities/athena/Objectives.tsx';
 import { moveable } from '@deities/athena/Radius.tsx';
-import { getOpponentPriorityLabels } from '@deities/athena/WinConditions.tsx';
 import groupBy from '@deities/hephaestus/groupBy.tsx';
 import maxBy from '@deities/hephaestus/maxBy.tsx';
 import minBy from '@deities/hephaestus/minBy.tsx';
@@ -140,7 +147,7 @@ export default class DionysusAlpha extends BaseAI {
     const currentPlayer = map.getCurrentPlayer();
     const vision = this.getVision(map);
     const labelsToPrioritize = getOpponentPriorityLabels(
-      map.config.winConditions,
+      map.config.objectives,
       currentPlayer.id,
     );
     let possibleAttacks = getPossibleAttacks(
@@ -459,6 +466,48 @@ export default class DionysusAlpha extends BaseAI {
     return this.execute(currentMap, RescueAction(parent, to));
   }
 
+  private _canBuildFundsBuildings: boolean | null = null;
+  private getCanBuildFundsBuildings(
+    map: MapData,
+    player: Player,
+    exampleVector: Vector,
+  ) {
+    if (this._canBuildFundsBuildings === null) {
+      const check = (vector: Vector) => {
+        for (const building of getAllBuildings()) {
+          if (
+            building.configuration.funds > 0 &&
+            !map.config.blocklistedBuildings.has(building.id) &&
+            building.configuration.cost < Number.POSITIVE_INFINITY &&
+            canBuild(map, building, player, vector)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      this._canBuildFundsBuildings =
+        !map.config.blocklistedBuildings.size ||
+        check(exampleVector) ||
+        map.reduceEachField((canBuildFundsBuilding, vector) => {
+          if (canBuildFundsBuilding) {
+            return true;
+          }
+
+          if (
+            !BuildableTiles.has(map.getTileInfo(vector)) ||
+            map.buildings.get(vector)
+          ) {
+            return false;
+          }
+
+          return check(vector);
+        }, false);
+    }
+    return this._canBuildFundsBuildings;
+  }
+
   private createBuilding(map: MapData): MapData | null {
     const currentPlayer = map.getCurrentPlayer();
     const [from, unit] =
@@ -477,6 +526,22 @@ export default class DionysusAlpha extends BaseAI {
     const getFunds = () =>
       _funds == null ? (_funds = calculateFunds(map, currentPlayer)) : _funds;
 
+    let _allowAnyBuilding: boolean | null = null;
+    const getAllowAnyBuilding = () =>
+      _allowAnyBuilding === null
+        ? (_allowAnyBuilding = hasUnitsOrProductionBuildings(
+            map,
+            currentPlayer,
+          ))
+        : _allowAnyBuilding;
+
+    const shouldBuild = (info: BuildingInfo) =>
+      getAllowAnyBuilding()
+        ? info.configuration.funds > 0 ||
+          getFunds() > 0 ||
+          !this.getCanBuildFundsBuildings(map, currentPlayer, from)
+        : info.canBuildUnits();
+
     // Find a building to construct based on importance.
     const { info, to } =
       maxBy(
@@ -490,6 +555,11 @@ export default class DionysusAlpha extends BaseAI {
             true,
           ),
           (item) => {
+            const tile = map.getTileInfo(item.vector);
+            if (!BuildableTiles.has(tile)) {
+              return null;
+            }
+
             const currentUnit = map.units.get(item.vector);
             if (
               map.buildings.has(item.vector) ||
@@ -497,12 +567,14 @@ export default class DionysusAlpha extends BaseAI {
             ) {
               return null;
             }
+
             const buildingInfos = filterBuildings(
               (info) =>
                 info.configuration.cost <= currentPlayer.funds &&
                 canBuild(map, info, unit.player, item.vector) &&
-                (getFunds() > 0 || info.configuration.funds > 0),
+                shouldBuild(info),
             );
+
             if (!buildingInfos.length) {
               return null;
             }
@@ -601,7 +673,11 @@ export default class DionysusAlpha extends BaseAI {
       }
     }
 
-    return this.execute(currentMap, CreateBuildingAction(to, info.id));
+    currentMap = this.execute(currentMap, CreateBuildingAction(to, info.id));
+    if (currentMap) {
+      this._canBuildFundsBuildings = null;
+    }
+    return currentMap;
   }
 
   private buySkills(map: MapData): MapData | null {

@@ -1,20 +1,16 @@
+import createBotWithName from '@deities/athena/lib/createBotWithName.tsx';
 import getUnitsToHealOnBuildings from '@deities/athena/lib/getUnitsToHealOnBuildings.tsx';
 import shouldRemoveUnit from '@deities/athena/lib/shouldRemoveUnit.tsx';
 import updatePlayer from '@deities/athena/lib/updatePlayer.tsx';
 import updatePlayers from '@deities/athena/lib/updatePlayers.tsx';
 import { HealAmount } from '@deities/athena/map/Configuration.tsx';
 import {
-  Bot,
   HumanPlayer,
   isHumanPlayer,
   resolveDynamicPlayerID,
 } from '@deities/athena/map/Player.tsx';
 import MapData from '@deities/athena/MapData.tsx';
 import { EndTurnActionResponse } from '../ActionResponse.tsx';
-import getColorName from '../lib/getColorName.tsx';
-import nameGenerator from '../lib/nameGenerator.tsx';
-
-const generateName = nameGenerator();
 
 export default function applyEndTurnActionResponse(
   map: MapData,
@@ -31,10 +27,13 @@ export default function applyEndTurnActionResponse(
   }
 
   let teams = updatePlayers(map.teams, [nextPlayer, currentPlayer]);
+  const supplyVectors = new Set(supply);
   const destroyedUnits = map
     .subtractFuel(nextPlayer.id)
-    .units.filter((unit, vector) =>
-      shouldRemoveUnit(map, vector, unit, nextPlayer.id),
+    .units.filter(
+      (unit, vector) =>
+        !supplyVectors.has(vector) &&
+        shouldRemoveUnit(map, vector, unit, nextPlayer.id),
     ).size;
 
   if (destroyedUnits > 0) {
@@ -52,10 +51,9 @@ export default function applyEndTurnActionResponse(
   if (rotatePlayers && isHumanPlayer(currentPlayer)) {
     const temporaryMap = map.copy({ teams });
     teams = updatePlayers(teams, [
-      Bot.from(
-        temporaryMap.getPlayer(current.player),
-        `${getColorName(current.player)} ${generateName()}`,
-      ).copy({ teamId: currentPlayer.teamId }),
+      createBotWithName(temporaryMap.getPlayer(current.player)).copy({
+        teamId: currentPlayer.teamId,
+      }),
       HumanPlayer.from(
         temporaryMap.getPlayer(next.player),
         currentPlayer.userId,

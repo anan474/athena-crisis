@@ -4,6 +4,7 @@ import {
   Airbase,
   Barracks,
   Factory,
+  filterBuildings,
   House,
   HQ,
   RepairShop,
@@ -22,6 +23,8 @@ import {
   Artillery,
   Battleship,
   Corvette,
+  FighterJet,
+  Flamethrower,
   HeavyArtillery,
   HeavyTank,
   Humvee,
@@ -32,6 +35,7 @@ import {
   SmallTank,
   Sniper,
   SuperTank,
+  TransportHelicopter,
   XFighter,
 } from '@deities/athena/info/Unit.tsx';
 import updatePlayer from '@deities/athena/lib/updatePlayer.tsx';
@@ -40,7 +44,9 @@ import withModifiers from '@deities/athena/lib/withModifiers.tsx';
 import { AIBehavior } from '@deities/athena/map/AIBehavior.tsx';
 import vec from '@deities/athena/map/vec.tsx';
 import MapData, { SizeVector } from '@deities/athena/MapData.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
 import AIRegistry from '@deities/dionysus/AIRegistry.tsx';
+import ImmutableMap from '@nkzw/immutable-map';
 import { expect, test } from 'vitest';
 import snapshotGameState from '../snapshotGameState.tsx';
 
@@ -122,7 +128,7 @@ test('attempt to attack new units when they are revealed after creating a unit',
     "CreateUnit (1,3 → 2,3) { unit: Jeep { id: 6, health: 100, player: 2, fuel: 60, moved: true, name: 'Remy', completed: true }, free: false, skipBehaviorRotation: false }
     AttackUnit (1,1 → 3,3) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 3 ] ] }, unitB: null, chargeA: 33, chargeB: 100 }
     AttackUnitGameOver { fromPlayer: 1, toPlayer: 2 }
-    GameEnd { condition: null, conditionId: null, toPlayer: 2 }"
+    GameEnd { objective: null, objectiveId: null, toPlayer: 2 }"
   `);
 });
 
@@ -150,7 +156,7 @@ test('attempt to attack new units when they are revealed after unfolding', async
     "Unfold (1,3)
     AttackUnit (1,1 → 3,3) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 3 ] ] }, unitB: null, chargeA: 33, chargeB: 100 }
     AttackUnitGameOver { fromPlayer: 1, toPlayer: 2 }
-    GameEnd { condition: null, conditionId: null, toPlayer: 2 }"
+    GameEnd { objective: null, objectiveId: null, toPlayer: 2 }"
   `);
 });
 
@@ -194,7 +200,7 @@ test('A unit with `stay` behavior will never move or fold', () => {
   expect(snapshotGameState(secondGameState)).toMatchInlineSnapshot(`
     "AttackUnit (2,1 → 3,3) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 6 ] ] }, unitB: null, chargeA: 33, chargeB: 100 }
     AttackUnitGameOver { fromPlayer: 1, toPlayer: 2 }
-    GameEnd { condition: null, conditionId: null, toPlayer: 2 }"
+    GameEnd { objective: null, objectiveId: null, toPlayer: 2 }"
   `);
 
   const thirdMap = initialMap.copy({
@@ -326,7 +332,7 @@ test('AI behavior from buildings carries over in a round-robin fashion', () => {
 
   expect(snapshotGameState(gameState)).toMatchInlineSnapshot(`
     "CreateUnit (1,3 → 2,3) { unit: Pioneer { id: 1, health: 100, player: 2, fuel: 40, moved: true, name: 'Sam', completed: true, behavior: 1 }, free: false, skipBehaviorRotation: false }
-    CreateUnit (1,1 → 2,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Unknown', completed: true, behavior: 2 }, free: false, skipBehaviorRotation: false }
+    CreateUnit (1,1 → 2,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Joey', completed: true, behavior: 2 }, free: false, skipBehaviorRotation: false }
     EndTurn { current: { funds: 250, player: 2 }, next: { funds: 0, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 
@@ -443,7 +449,7 @@ test('AI will not attempt to create a unit it cannot deploy', () => {
   // The AI tries to build the strongest unit (likely 'Mammoth') which requires rails, but there are none.
   // This test ensures that the AI still actually creates a unit.
   expect(snapshotGameState(secondGameState)).toMatchInlineSnapshot(`
-    "CreateUnit (1,1 → 2,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Unknown', completed: true }, free: false, skipBehaviorRotation: false }
+    "CreateUnit (1,1 → 2,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Joey', completed: true }, free: false, skipBehaviorRotation: false }
     EndTurn { current: { funds: 350, player: 2 }, next: { funds: 0, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 });
@@ -485,7 +491,7 @@ test('AI will not attack if the damage is too low', () => {
     "Move (1,2 → 2,3) { fuel: 48, completed: null, path: [1,3 → 2,3] }
     AttackUnit (2,3 → 3,3) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100 }, unitB: null, chargeA: 1, chargeB: 3 }
     AttackUnitGameOver { fromPlayer: 1, toPlayer: 2 }
-    GameEnd { condition: null, conditionId: null, toPlayer: 2 }"
+    GameEnd { objective: null, objectiveId: null, toPlayer: 2 }"
   `);
 });
 
@@ -513,7 +519,7 @@ test('AI will prefer to rescue over capture', () => {
 
   expect(snapshotGameState(gameStateA)).toMatchInlineSnapshot(`
     "Move (1,2 → 3,2) { fuel: 38, completed: null, path: [2,2 → 3,2] }
-    Rescue (3,2 → 3,3) { player: 2 }
+    Rescue (3,2 → 3,3) { player: 2, name: null }
     EndTurn { current: { funds: 1000, player: 2 }, next: { funds: 0, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 
@@ -527,8 +533,8 @@ test('AI will prefer to rescue over capture', () => {
   );
 
   expect(snapshotGameState(gameStateB)).toMatchInlineSnapshot(`
-    "Rescue (3,2 → 3,3) { player: 2 }
-    AttackUnit (3,3 → 2,3) { hasCounterAttack: true, playerA: 2, playerB: 1, unitA: DryUnit { health: 95, ammo: [ [ 1, 9 ] ] }, unitB: DryUnit { health: 26, ammo: [ [ 1, 6 ] ] }, chargeA: 121, chargeB: 277 }
+    "Rescue (3,2 → 3,3) { player: 2, name: -18 }
+    AttackUnit (3,3 → 2,3) { hasCounterAttack: true, playerA: 2, playerB: 1, unitA: DryUnit { health: 95, ammo: [ [ 1, 9 ] ] }, unitB: DryUnit { health: 20, ammo: [ [ 1, 6 ] ] }, chargeA: 129, chargeB: 300 }
     EndTurn { current: { funds: 1000, player: 2 }, next: { funds: 0, player: 1 }, round: 3, rotatePlayers: null, supply: null, miss: null }"
   `);
 });
@@ -719,7 +725,7 @@ test('AI does not keep building naval units if the opponent does not have any na
   );
 
   expect(snapshotGameState(gameStateA)).toMatchInlineSnapshot(`
-    "CreateUnit (1,1 → 2,1) { unit: Frigate { id: 29, health: 100, player: 2, fuel: 60, ammo: [ [ 1, 8 ] ], moved: true, name: 'Unknown', completed: true }, free: false, skipBehaviorRotation: false }
+    "CreateUnit (1,1 → 2,1) { unit: Frigate { id: 29, health: 100, player: 2, fuel: 60, ammo: [ [ 1, 8 ] ], moved: true, name: 'Thomas', completed: true }, free: false, skipBehaviorRotation: false }
     EndTurn { current: { funds: 400, player: 2 }, next: { funds: 800, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 
@@ -732,7 +738,7 @@ test('AI does not keep building naval units if the opponent does not have any na
   );
 
   expect(snapshotGameState(gameStateB)).toMatchInlineSnapshot(`
-    "CreateUnit (3,1 → 3,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Unknown', completed: true }, free: false, skipBehaviorRotation: false }
+    "CreateUnit (3,1 → 3,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Joey', completed: true }, free: false, skipBehaviorRotation: false }
     EndTurn { current: { funds: 150, player: 2 }, next: { funds: 800, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 
@@ -747,7 +753,7 @@ test('AI does not keep building naval units if the opponent does not have any na
   expect(snapshotGameState(gameStateC)).toMatchInlineSnapshot(`
     "Move (3,3 → 1,3) { fuel: 27, completed: null, path: [2,3 → 1,3] }
     AttackUnit (1,3 → 1,2) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 4 ] ] }, unitB: DryUnit { health: 67, ammo: [ [ 1, 4 ] ] }, chargeA: 108, chargeB: 330 }
-    CreateUnit (3,1 → 3,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Unknown', completed: true }, free: false, skipBehaviorRotation: false }
+    CreateUnit (3,1 → 3,1) { unit: Heavy Artillery { id: 12, health: 100, player: 2, fuel: 15, ammo: [ [ 1, 4 ] ], moved: true, name: 'Joey', completed: true }, free: false, skipBehaviorRotation: false }
     EndTurn { current: { funds: 150, player: 2 }, next: { funds: 800, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 
@@ -762,13 +768,14 @@ test('AI does not keep building naval units if the opponent does not have any na
   expect(snapshotGameState(gameStateD)).toMatchInlineSnapshot(`
     "Move (3,3 → 1,3) { fuel: 27, completed: null, path: [2,3 → 1,3] }
     AttackUnit (1,3 → 1,2) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 4 ] ] }, unitB: DryUnit { health: 67, ammo: [ [ 1, 4 ] ] }, chargeA: 108, chargeB: 330 }
-    CreateUnit (1,1 → 2,1) { unit: Frigate { id: 29, health: 100, player: 2, fuel: 60, ammo: [ [ 1, 8 ] ], moved: true, name: 'Unknown', completed: true }, free: false, skipBehaviorRotation: false }
+    CreateUnit (1,1 → 2,1) { unit: Frigate { id: 29, health: 100, player: 2, fuel: 60, ammo: [ [ 1, 8 ] ], moved: true, name: 'Thomas', completed: true }, free: false, skipBehaviorRotation: false }
     EndTurn { current: { funds: 400, player: 2 }, next: { funds: 800, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
 });
 
 test('AI will prefer funds generating buildings over factories if it has no income', () => {
   const vecA = vec(1, 2);
+  const vecB = vec(2, 2);
   const map = initialMap.copy({
     map: [1, Airfield.id, ConstructionSite.id, 1, 1, 1, 1, 1, 1],
     teams: updatePlayers(
@@ -777,7 +784,9 @@ test('AI will prefer funds generating buildings over factories if it has no inco
         .getPlayers()
         .map((player) => player.setFunds(Airbase.configuration.cost)),
     ),
-    units: initialMap.units.set(vecA, Pioneer.create(2)),
+    units: initialMap.units
+      .set(vecA, Pioneer.create(2))
+      .set(vecB, Flamethrower.create(2)),
   });
 
   const [, , gameStateA] = executeGameAction(
@@ -791,19 +800,83 @@ test('AI will prefer funds generating buildings over factories if it has no inco
   expect(snapshotGameState(gameStateA)).toMatchInlineSnapshot(`
     "Move (1,2 → 3,1) { fuel: 37, completed: null, path: [2,2 → 3,2 → 3,1] }
     CreateBuilding (3,1) { building: House { id: 2, health: 100, player: 2, completed: true } }
+    CompleteUnit (2,2)
     EndTurn { current: { funds: 100, player: 2 }, next: { funds: 200, player: 1 }, round: 2, rotatePlayers: null, supply: null, miss: null }"
   `);
+});
+
+test('AI will create factories if it has no income and cannot build funds generating buildings', () => {
+  const vecA = vec(1, 2);
+  const vecB = vec(3, 3);
+  const blocklistedBuildings = new Set(
+    filterBuildings(({ configuration }) => configuration.funds > 0).map(
+      ({ id }) => id,
+    ),
+  );
+  const unitBuildings = new Set(
+    filterBuildings((building) => building.canBuildUnits()).map(({ id }) => id),
+  );
+
+  const map = initialMap.copy({
+    config: initialMap.config.copy({
+      blocklistedBuildings,
+    }),
+    map: [1, 1, ConstructionSite.id, 1, 1, 1, 1, 1, 1],
+    teams: updatePlayers(
+      initialMap.teams,
+      initialMap.getPlayers().map((player) => player.setFunds(10_000)),
+    ),
+    units: initialMap.units.set(vecA, Pioneer.create(2)),
+  });
+
+  const [, , gameStateA] = executeGameAction(
+    map,
+    map.createVisionObject(player1),
+    new Map(),
+    EndTurnAction(),
+    AIRegistry,
+  );
+
+  const actionResponseA = gameStateA!.at(1)![0];
+  expect(actionResponseA.type).toBe('CreateBuilding');
+  expect(
+    actionResponseA.type === 'CreateBuilding' &&
+      unitBuildings.has(actionResponseA.building.id),
+  ).toBe(true);
+
+  expect(
+    snapshotGameState([gameStateA![0], ...gameStateA!.slice(2, -1)]),
+  ).toMatchInlineSnapshot(
+    `"Move (1,2 → 3,1) { fuel: 37, completed: null, path: [2,2 → 3,2 → 3,1] }"`,
+  );
+
+  const [, , gameStateB] = executeGameAction(
+    map.copy({
+      units: map.units.set(vecB, Flamethrower.create(2)),
+    }),
+    map.createVisionObject(player1),
+    new Map(),
+    EndTurnAction(),
+    AIRegistry,
+  );
+
+  const actionResponseB = gameStateB!.at(1)![0];
+  expect(actionResponseB.type).toBe('CreateBuilding');
+  expect(
+    actionResponseB.type === 'CreateBuilding' &&
+      unitBuildings.has(actionResponseB.building.id),
+  ).toBe(true);
+
+  expect(
+    snapshotGameState([gameStateA![0], ...gameStateA!.slice(2, -1)]),
+  ).toMatchInlineSnapshot(
+    `"Move (1,2 → 3,1) { fuel: 37, completed: null, path: [2,2 → 3,2 → 3,1] }"`,
+  );
 });
 
 test('AI will move onto escort vectors even if it is a long-range unit', () => {
   const initialMap = withModifiers(
     MapData.createMap({
-      config: {
-        winConditions: [
-          [0, 0, null],
-          [4, 0, [2], [2], [5, 4], null],
-        ],
-      },
       map: [
         6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 6, 6, 6,
         6,
@@ -813,21 +886,30 @@ test('AI will move onto escort vectors even if it is a long-range unit', () => {
         width: 5,
       },
       teams: [
-        {
-          id: 1,
-          name: '',
-          players: [{ funds: 0, id: 1, userId: '1' }],
-        },
-        {
-          id: 2,
-          name: '',
-          players: [{ funds: 0, id: 2, name: 'Bot' }],
-        },
+        { id: 1, name: '', players: [{ funds: 0, id: 1, userId: '1' }] },
+        { id: 2, name: '', players: [{ funds: 0, id: 2, name: 'Bot' }] },
       ],
     }),
   );
 
   const map = initialMap.copy({
+    config: initialMap.config.copy({
+      objectives: ImmutableMap([
+        [0, { hidden: false, type: Criteria.Default }],
+        [
+          1,
+          {
+            hidden: false,
+            label: new Set([2]),
+            optional: false,
+            players: [2],
+            reward: null,
+            type: Criteria.EscortLabel,
+            vectors: new Set([vec(5, 4)]),
+          },
+        ],
+      ]),
+    }),
     units: initialMap.units
       .set(vec(5, 1), XFighter.create(2, { label: 2 }))
       .set(vec(1, 5), Pioneer.create(1)),
@@ -843,6 +925,63 @@ test('AI will move onto escort vectors even if it is a long-range unit', () => {
 
   expect(snapshotGameState(gameStateA)).toMatchInlineSnapshot(`
     "Move (5,1 → 5,4) { fuel: 36, completed: null, path: [5,2 → 5,3 → 5,4] }
-    GameEnd { condition: { hidden: false, label: [ 2 ], players: [ 2 ], reward: null, type: 4, vectors: [ '5,4' ] }, conditionId: 1, toPlayer: 2 }"
+    GameEnd { objective: { hidden: false, label: [ 2 ], optional: false, players: [ 2 ], reward: null, type: 4, vectors: [ '5,4' ] }, objectiveId: 1, toPlayer: 2 }"
+  `);
+});
+
+test('AI will prioritize units with labels associated with win conditions', () => {
+  const initialMap = withModifiers(
+    MapData.createMap({
+      map: [
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 6, 6, 6,
+        6,
+      ],
+      size: {
+        height: 5,
+        width: 5,
+      },
+      teams: [
+        { id: 1, name: '', players: [{ funds: 0, id: 1, userId: '1' }] },
+        { id: 2, name: '', players: [{ funds: 0, id: 2, name: 'Bot' }] },
+      ],
+    }),
+  );
+
+  const map = initialMap.copy({
+    config: initialMap.config.copy({
+      objectives: ImmutableMap([
+        [0, { hidden: false, type: Criteria.Default }],
+        [
+          1,
+          {
+            hidden: false,
+            label: new Set([1]),
+            optional: false,
+            players: [1],
+            reward: null,
+            type: Criteria.EscortLabel,
+            vectors: new Set([vec(1, 1)]),
+          },
+        ],
+      ]),
+    }),
+    units: initialMap.units
+      .set(vec(1, 1), FighterJet.create(2))
+      .set(vec(3, 3), FighterJet.create(1, { label: 2 }).setHealth(1))
+      .set(vec(5, 5), TransportHelicopter.create(1, { label: 1 })),
+  });
+
+  const [, , gameStateA] = executeGameAction(
+    map,
+    map.createVisionObject(player1),
+    new Map(),
+    EndTurnAction(),
+    AIRegistry,
+  );
+
+  expect(snapshotGameState(gameStateA)).toMatchInlineSnapshot(`
+    "Move (1,1 → 5,4) { fuel: 42, completed: null, path: [1,2 → 1,3 → 1,4 → 2,4 → 3,4 → 4,4 → 5,4] }
+    AttackUnit (5,4 → 5,5) { hasCounterAttack: false, playerA: 2, playerB: 1, unitA: DryUnit { health: 100, ammo: [ [ 1, 7 ] ] }, unitB: null, chargeA: 66, chargeB: 200 }
+    GameEnd { objective: { hidden: false, label: [ 1 ], optional: false, players: [ 1 ], reward: null, type: 4, vectors: [ '1,1' ] }, objectiveId: 1, toPlayer: 2 }"
   `);
 });

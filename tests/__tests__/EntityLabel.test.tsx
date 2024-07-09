@@ -22,7 +22,8 @@ import withModifiers from '@deities/athena/lib/withModifiers.tsx';
 import { HumanPlayer } from '@deities/athena/map/Player.tsx';
 import vec from '@deities/athena/map/vec.tsx';
 import MapData from '@deities/athena/MapData.tsx';
-import { WinCriteria } from '@deities/athena/WinConditions.tsx';
+import { Criteria } from '@deities/athena/Objectives.tsx';
+import ImmutableMap from '@nkzw/immutable-map';
 import { expect, test } from 'vitest';
 import executeGameActions from '../executeGameActions.tsx';
 import snapshotEncodedActionResponse from '../snapshotEncodedActionResponse.tsx';
@@ -128,13 +129,17 @@ test('drops labels from hidden win conditions', () => {
   const initialMap = map.copy({
     buildings: map.buildings.set(vecA, Barracks.create(1, { label: 3 })),
     config: map.config.copy({
-      winConditions: [
-        {
-          hidden: true,
-          label: new Set([3]),
-          type: WinCriteria.CaptureLabel,
-        } as const,
-      ],
+      objectives: ImmutableMap([
+        [
+          0,
+          {
+            hidden: true,
+            label: new Set([3]),
+            optional: false,
+            type: Criteria.CaptureLabel,
+          },
+        ],
+      ]),
     }),
     units: map.units
       .set(vecA, Pioneer.create(1, { label: 3 }))

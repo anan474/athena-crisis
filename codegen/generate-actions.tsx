@@ -28,7 +28,7 @@ const files = [
   './apollo/Action.tsx',
   './apollo/ActionResponse.tsx',
   './apollo/Condition.tsx',
-  './apollo/GameOver.tsx',
+  './apollo/Objective.tsx',
   './apollo/HiddenAction.tsx',
 ];
 
@@ -36,8 +36,8 @@ const customEncoderReferences = new Set([
   'DynamicPlayerID',
   'Reward',
   'Teams',
-  'WinCondition',
-  'WinConditionID',
+  'Objective',
+  'DynamicEffectObjectiveID',
 ]);
 const scalarReferences = new Set(['PlayerID', 'Skill']);
 const allowedReferences = new Set([
@@ -80,7 +80,7 @@ type ValueType = Readonly<
 >;
 
 const getShortName = (name: string) =>
-  name.replace(/Action(Response)?|Condition$/, '');
+  name.replace(/Action(Response)?$|Condition$/, '');
 
 const actionMap = new Map<string, [number, Array<string>]>(
   JSON.parse(readFileSync(stableActionMapFileName, 'utf8')),
@@ -500,7 +500,7 @@ const decodeProps = (
             list: [
               ...list,
               optional
-                ? `${name}: ${actionType}[${counter}] ? ${decodeCall} : undefined`
+                ? `${name}: ${actionType}[${counter}] != null ? ${decodeCall} : undefined`
                 : `${name}: ${decodeCall}`,
             ],
           };
@@ -612,7 +612,11 @@ const formatProp = (
     : `${name}: ${formatValue(name, optional, value, prefix)}`;
 };
 
-const formatAction = ({ name: actionName, props }: ExtractedType): string => {
+const formatAction = ({
+  name: actionName,
+  props,
+  type,
+}: ExtractedType): string => {
   const shortName = getShortName(actionName);
   const from = props.find(({ name }) => name === 'from');
   const to = props.find(({ name }) => name === 'to');
@@ -682,19 +686,19 @@ const write = async (extractedTypes: ReadonlyArray<ExtractedType>) => {
       import {
         Condition,
         Conditions,
-        PlainWinConditionID,
-        decodeWinConditionID,
-        encodeWinConditionID,
+        PlainDynamicEffectObjectiveID,
+        decodeDynamicEffectObjectiveID,
+        encodeDynamicEffectObjectiveID,
       } from './Condition.tsx';
       import {
         AttackDirection,
         PlainAttackDirection,
       } from './attack-direction/getAttackDirection.tsx';
       import {
-        PlainWinCondition,
-        decodeWinCondition,
-        encodeWinCondition,
-      } from '@deities/athena/WinConditions.tsx';
+        PlainObjective,
+        decodeObjective,
+        encodeObjective,
+      } from '@deities/athena/Objectives.tsx';
       import { Skill as PlainSkill } from '@deities/athena/info/Skill.tsx';
       import Building, { PlainBuilding } from '@deities/athena/map/Building.tsx';
       import { PlainEntitiesList } from '@deities/athena/map/PlainMap.tsx';
@@ -878,7 +882,7 @@ const write = async (extractedTypes: ReadonlyArray<ExtractedType>) => {
     `
       import { Action } from './Action.tsx';
       import { ActionResponse, ActionResponses } from './ActionResponse.tsx';
-      import { formatWinCondition } from '@deities/athena/WinConditions.tsx';
+      import { formatObjective } from '@deities/athena/Objectives.tsx';
       import { getBuildingInfo } from '@deities/athena/info/Building.tsx';
       import { getUnitInfo } from '@deities/athena/info/Unit.tsx';
       import { formatReward } from '@deities/athena/map/Reward.tsx';
